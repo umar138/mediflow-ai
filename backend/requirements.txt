@@ -1,0 +1,14 @@
+
+fastapi
+uvicorn
+sqlalchemy>=2.0.52
+psycopg2-binary>=2.9.13
+alembic
+pydantic>=2.14.0
+pydantic-settings
+python-jose[cryptography]
+httpx
+python-multipart
+pytest
+passlib==1.7.4
+bcrypt==4.0.1
