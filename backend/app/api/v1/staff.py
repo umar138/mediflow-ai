@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.api.v1.auth import get_current_staff_context, require_roles
 from app.models.entities import (
-    Clinic, Department, Patient, QueueTicket, IntakeRecord,
+    Clinic, Department, Patient, QueueTicket, IntakeRecord, StaffUser,
     VitalObservation, TriageAssessment, TriageRuleHit, Consultation,
     ClinicDelay, PatientTrackingToken, AuditLog,
     UserRole, TicketStatus, UrgencyTier, IntakeChannel, InputMode,

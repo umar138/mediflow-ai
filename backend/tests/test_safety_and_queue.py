@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-from app.schemas.triage import TriageInput
+from backend.app.schemas.triage import TriageInput
 from app.services.triage import run_hybrid_triage
 from app.services.queue import compute_priority_score
 from app.models.entities import UrgencyTier

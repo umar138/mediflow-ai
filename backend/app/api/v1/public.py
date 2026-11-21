@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import (
-    Clinic, Department, Patient, QueueTicket, IntakeRecord,
+    Clinic, Consultation, Department, Patient, QueueTicket, IntakeRecord, StaffUser,
     TriageAssessment, TriageRuleHit, PatientTrackingToken, DisplayAccessToken,
     TicketStatus, UrgencyTier, IntakeChannel, InputMode, PreferredLanguage,
     TriageSource, AuditLog
