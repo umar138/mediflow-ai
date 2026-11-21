@@ -33,3 +33,18 @@ async def public_display_ws(websocket: WebSocket, display_token: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         ws_manager.disconnect_display(display_token, websocket)
+
+
+@router.websocket("/ws/tickets/{tracking_token}")
+async def patient_ticket_ws(websocket: WebSocket, tracking_token: str):
+    await ws_manager.connect_ticket(tracking_token, websocket)
+    try:
+        await websocket.send_json({
+            "type": "ticket.connected",
+            "tracking_token": tracking_token,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect_ticket(tracking_token, websocket)

@@ -57,6 +57,9 @@ def _build_ticket_item(db: Session, ticket: QueueTicket, ahead_count: int = 0) -
         .order_by(VitalObservation.measured_at.desc())
         .first()
     )
+    patient = db.query(Patient).filter(Patient.patient_id == ticket.patient_id).first()
+    doctor = db.query(StaffUser).filter(StaffUser.user_id == ticket.doctor_id).first() if ticket.doctor_id else None
+
     eta_min, eta_max, _ = calculate_eta_range(
         db,
         ticket.clinic_id,
@@ -86,6 +89,12 @@ def _build_ticket_item(db: Session, ticket: QueueTicket, ahead_count: int = 0) -
         ),
         eta_min_minutes=eta_min,
         eta_max_minutes=eta_max,
+        room_number=ticket.room_number or (doctor.room_number if doctor else None),
+        called_by_doctor_name=ticket.called_by_doctor_name or (doctor.full_name if doctor else None),
+        patient_name=patient.display_name if patient else "Patient",
+        patient_cnic=patient.cnic if patient else None,
+        patient_phone=patient.phone_number if patient else None,
+        triage_card_type=ticket.urgency.value,
     )
 
 
@@ -346,12 +355,20 @@ def _transition_ticket(
         if ctx["role"] == UserRole.DOCTOR:
             ticket.doctor_id = ctx["user_id"]
         ticket.called_at = now
+        doc = db.query(StaffUser).filter(StaffUser.user_id == ctx["user_id"]).first()
+        if doc:
+            ticket.called_by_doctor_name = doc.full_name
+            ticket.room_number = (req.room_number if (req and req.room_number) else doc.room_number) or "Room 101"
     elif target_status == TicketStatus.IN_CONSULTATION:
         if ctx["role"] == UserRole.DOCTOR:
             ticket.doctor_id = ctx["user_id"]
         elif ticket.doctor_id is None:
             ticket.doctor_id = ctx["user_id"]
         ticket.consultation_started_at = now
+        doc = db.query(StaffUser).filter(StaffUser.user_id == ticket.doctor_id).first()
+        if doc and not ticket.called_by_doctor_name:
+            ticket.called_by_doctor_name = doc.full_name
+            ticket.room_number = doc.room_number or "Room 101"
         existing_c = db.query(Consultation).filter(Consultation.ticket_id == ticket.ticket_id).first()
         if not existing_c:
             db.add(Consultation(ticket_id=ticket.ticket_id, doctor_id=ticket.doctor_id, started_at=now))
@@ -413,7 +430,21 @@ async def call_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     _assert_same_clinic(ctx, ticket.clinic_id)
     _transition_ticket(db, ticket, TicketStatus.CALLED, ctx, req)
+
+    # Realtime notification to patient's live screen
+    tok_row = db.query(PatientTrackingToken).filter(PatientTrackingToken.ticket_id == ticket.ticket_id).first()
+    if tok_row:
+        await ws_manager.broadcast_ticket(tok_row.tracking_token, {
+            "type": "ticket.called",
+            "token_code": ticket.token_code,
+            "status": "CALLED",
+            "room_number": ticket.room_number,
+            "doctor_name": ticket.called_by_doctor_name,
+            "message": f"Token {ticket.token_code} called! Please proceed to {ticket.room_number or 'Doctor Room'}.",
+        })
+
     await ws_manager.broadcast_staff(str(ticket.clinic_id), {"type": "consultation.called", "ticket_id": str(ticket.ticket_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(ticket.clinic_id), {"type": "display.updated", "clinic_id": str(ticket.clinic_id)})
     return _build_ticket_item(db, ticket)
 
 
@@ -429,7 +460,20 @@ async def start_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     _assert_same_clinic(ctx, ticket.clinic_id)
     _transition_ticket(db, ticket, TicketStatus.IN_CONSULTATION, ctx, req)
+
+    tok_row = db.query(PatientTrackingToken).filter(PatientTrackingToken.ticket_id == ticket.ticket_id).first()
+    if tok_row:
+        await ws_manager.broadcast_ticket(tok_row.tracking_token, {
+            "type": "ticket.started",
+            "token_code": ticket.token_code,
+            "status": "IN_CONSULTATION",
+            "room_number": ticket.room_number,
+            "doctor_name": ticket.called_by_doctor_name,
+            "message": f"Consultation in progress with {ticket.called_by_doctor_name or 'Doctor'} in {ticket.room_number or 'Room'}.",
+        })
+
     await ws_manager.broadcast_staff(str(ticket.clinic_id), {"type": "queue.updated", "ticket_id": str(ticket.ticket_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(ticket.clinic_id), {"type": "display.updated", "clinic_id": str(ticket.clinic_id)})
     return _build_ticket_item(db, ticket)
 
 
@@ -445,7 +489,19 @@ async def complete_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     _assert_same_clinic(ctx, ticket.clinic_id)
     _transition_ticket(db, ticket, TicketStatus.COMPLETED, ctx, req)
+
+    tok_row = db.query(PatientTrackingToken).filter(PatientTrackingToken.ticket_id == ticket.ticket_id).first()
+    if tok_row:
+        await ws_manager.broadcast_ticket(tok_row.tracking_token, {
+            "type": "ticket.completed",
+            "token_code": ticket.token_code,
+            "status": "COMPLETED",
+            "clinician_note": req.clinician_note,
+            "message": "Consultation completed. You have been checked out. Thank you!",
+        })
+
     await ws_manager.broadcast_staff(str(ticket.clinic_id), {"type": "consultation.completed", "ticket_id": str(ticket.ticket_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(ticket.clinic_id), {"type": "display.updated", "clinic_id": str(ticket.clinic_id)})
     return _build_ticket_item(db, ticket)
 
 

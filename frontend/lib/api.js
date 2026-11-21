@@ -35,7 +35,6 @@ export const api = {
     return request(`/api/v1/public/clinics/${encodeURIComponent(slug)}`);
   },
   createIntake(clinicId, payload) {
-    // Exact contract fields: display_name, age_years, preferred_language, symptom_text, input_mode, department_id, patient_reported_duration
     return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/intakes`, {
       method: "POST",
       body: payload,
@@ -53,6 +52,36 @@ export const api = {
       body: { email, password },
     });
   },
+  doctorRegister(payload) {
+    return request(`/api/v1/auth/doctor/register`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+  patientRegister(payload) {
+    return request(`/api/v1/patient/register`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+  patientLogin(identifier, password) {
+    return request(`/api/v1/patient/login`, {
+      method: "POST",
+      body: { identifier, password },
+    });
+  },
+  patientForgotPassword(identifier) {
+    return request(`/api/v1/patient/forgot-password`, {
+      method: "POST",
+      body: { identifier },
+    });
+  },
+  getPatientProfile(token) {
+    return request(`/api/v1/patient/profile`, { token });
+  },
+  getPatientHistory(token) {
+    return request(`/api/v1/patient/history`, { token });
+  },
   getQueue(clinicId, departmentId, token) {
     const q = departmentId ? `?department_id=${encodeURIComponent(departmentId)}` : "";
     return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/queue${q}`, { token });
@@ -68,18 +97,17 @@ export const api = {
     });
   },
   addVitals(ticketId, vitalsPayload, token) {
-    // Exact contract fields: systolic_bp, diastolic_bp, temperature_c, spo2_percent, pulse_bpm, measured_at
     return request(`/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/vitals`, {
       method: "POST",
       token,
       body: vitalsPayload,
     });
   },
-  callTicket(ticketId, token) {
+  callTicket(ticketId, token, roomNumber) {
     return request(`/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/call`, {
       method: "POST",
       token,
-      body: {},
+      body: roomNumber ? { room_number: roomNumber } : {},
     });
   },
   startTicket(ticketId, token) {
@@ -90,7 +118,6 @@ export const api = {
     });
   },
   completeTicket(ticketId, payload, token) {
-    // { doctor_id, clinician_note }
     return request(`/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/complete`, {
       method: "POST",
       token,

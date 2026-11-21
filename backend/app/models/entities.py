@@ -81,6 +81,7 @@ class Department(Base):
     clinic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clinics.clinic_id", ondelete="CASCADE"), nullable=False)
     code: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    floor_or_wing: Mapped[str | None] = mapped_column(String(100), default="Ground Floor", nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -96,6 +97,11 @@ class StaffUser(Base):
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    degrees: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    specialization: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    license_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    room_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -121,7 +127,12 @@ class Patient(Base):
     patient_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     clinic_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("clinics.clinic_id", ondelete="CASCADE"), nullable=False)
     display_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    cnic: Mapped[str | None] = mapped_column(String(25), unique=True, nullable=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     age_years: Mapped[int] = mapped_column(Integer, nullable=False)
+    gender: Mapped[str | None] = mapped_column(String(20), default="other", nullable=True)
     preferred_language: Mapped[PreferredLanguage] = mapped_column(
         SQLEnum(PreferredLanguage, name="preferred_language"), default=PreferredLanguage.en
     )
@@ -143,6 +154,8 @@ class QueueTicket(Base):
     urgency: Mapped[UrgencyTier] = mapped_column(SQLEnum(UrgencyTier, name="urgency_tier"), default=UrgencyTier.GREEN, nullable=False)
     priority_score: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     channel: Mapped[IntakeChannel] = mapped_column(SQLEnum(IntakeChannel, name="intake_channel"), default=IntakeChannel.QR, nullable=False)
+    room_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    called_by_doctor_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
     checked_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -285,3 +298,14 @@ class AuditLog(Base):
     __table_args__ = (
         Index("ix_audit_entity_time", "entity_type", "entity_id", "created_at"),
     )
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

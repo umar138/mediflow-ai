@@ -21,6 +21,9 @@ class PublicClinicOut(BaseModel):
 
 class IntakeCreateRequest(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=150)
+    cnic: Optional[str] = Field(default=None, max_length=25)
+    phone_number: Optional[str] = Field(default=None, max_length=30)
+    gender: Optional[str] = "other"
     age_years: int = Field(..., ge=0, le=130)
     preferred_language: Literal["en", "ur", "roman_ur"] = "en"
     symptom_text: str = Field(..., min_length=1, max_length=2000)
@@ -37,6 +40,9 @@ class CreatedTicketSummary(BaseModel):
     queue_position: int
     eta_min_minutes: Optional[int] = None
     eta_max_minutes: Optional[int] = None
+    triage_card_type: str = "GREEN"
+    triage_card_title: str = ""
+    triage_card_message: str = ""
 
 
 class IntakeCreateResponse(BaseModel):
@@ -55,6 +61,12 @@ class PublicTicketTrackOut(BaseModel):
     clinic_notice: str
     safety_message: str
     updated_at: datetime
+    room_number: Optional[str] = None
+    called_by_doctor_name: Optional[str] = None
+    clinician_note: Optional[str] = None
+    triage_card_type: str = "GREEN"
+    triage_card_title: str = ""
+    triage_card_message: str = ""
 
 
 class StaffLoginRequest(BaseModel):
@@ -70,6 +82,10 @@ class StaffLoginResponse(BaseModel):
     role: str
     clinic_id: UUID
     department_id: Optional[UUID] = None
+    degrees: Optional[str] = None
+    specialization: Optional[str] = None
+    room_number: Optional[str] = None
+    department_name: Optional[str] = None
 
 
 class WalkInTicketCreateRequest(BaseModel):
@@ -116,6 +132,12 @@ class QueueTicketItemOut(BaseModel):
     vitals: VitalsSnapshot
     eta_min_minutes: Optional[int] = None
     eta_max_minutes: Optional[int] = None
+    room_number: Optional[str] = None
+    called_by_doctor_name: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_cnic: Optional[str] = None
+    patient_phone: Optional[str] = None
+    triage_card_type: str = "GREEN"
 
 
 class QueueResponseOut(BaseModel):
@@ -127,6 +149,7 @@ class QueueResponseOut(BaseModel):
 class TicketActionRequest(BaseModel):
     doctor_id: Optional[UUID] = None
     clinician_note: Optional[str] = None
+    room_number: Optional[str] = None
 
 
 class DelayCreateRequest(BaseModel):
@@ -144,3 +167,96 @@ class PublicDisplayOut(BaseModel):
     clinic_status: str
     public_notice: str
     updated_at: datetime
+
+
+# --- Real-world Patient Authentication & History Schemas ---
+class PatientRegisterRequest(BaseModel):
+    clinic_slug: str = "mediflow-central"
+    full_name: str = Field(..., min_length=2, max_length=150)
+    cnic: str = Field(..., min_length=13, max_length=20)
+    phone_number: str = Field(..., min_length=10, max_length=20)
+    age_years: int = Field(..., ge=0, le=130)
+    gender: Literal["male", "female", "other"] = "other"
+    email: Optional[str] = None
+    password: str = Field(..., min_length=6)
+    preferred_language: Literal["en", "ur", "roman_ur"] = "en"
+
+
+class PatientLoginRequest(BaseModel):
+    identifier: str = Field(..., description="CNIC or Email")
+    password: str = Field(..., min_length=4)
+
+
+class PatientAuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    patient_id: UUID
+    full_name: str
+    cnic: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    age_years: int
+    clinic_id: UUID
+    clinic_slug: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str = Field(..., description="Email or CNIC")
+
+
+class ForgotPasswordResponse(BaseModel):
+    status: str
+    message: str
+    reset_token: Optional[str] = None
+
+
+class PatientHistoryItem(BaseModel):
+    ticket_id: UUID
+    token_code: str
+    visit_date: datetime
+    department_name: str
+    doctor_name: Optional[str] = None
+    doctor_degrees: Optional[str] = None
+    room_number: Optional[str] = None
+    status: str
+    urgency: str
+    triage_card_type: str
+    symptoms: str
+    clinician_note: Optional[str] = None
+
+
+class PatientHistoryResponse(BaseModel):
+    patient_id: UUID
+    full_name: str
+    cnic: Optional[str] = None
+    total_visits: int
+    history: List[PatientHistoryItem]
+
+
+# --- Real-world Doctor Registration & Onboarding Schemas ---
+class DoctorRegisterRequest(BaseModel):
+    clinic_slug: str = "mediflow-central"
+    full_name: str = Field(..., min_length=2, max_length=150)
+    email: str = Field(..., min_length=5, max_length=200)
+    password: str = Field(..., min_length=6)
+    phone_number: Optional[str] = None
+    degrees: str = Field(..., min_length=2, max_length=200, description="e.g. MBBS, FCPS Cardiology")
+    specialization: str = Field(..., min_length=2, max_length=100, description="e.g. Cardiologist")
+    license_number: str = Field(..., min_length=3, max_length=80, description="PMDC / Medical License ID")
+    department_id: Optional[UUID] = None
+    department_code: Optional[str] = "GP"
+    room_number: str = Field(default="Room 101", max_length=50)
+
+
+class DoctorRegisterResponse(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: str
+    role: str
+    degrees: str
+    specialization: str
+    room_number: str
+    department_name: str
+    clinic_name: str
+    access_token: str
+    token_type: str = "bearer"

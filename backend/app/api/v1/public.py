@@ -73,14 +73,30 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
     now = datetime.now(timezone.utc)
     score, _ = compute_priority_score(urgency_enum, now, now=now)
 
-    patient = Patient(
-        clinic_id=clinic_id,
-        display_name=req.display_name,
-        age_years=req.age_years,
-        preferred_language=PreferredLanguage(req.preferred_language),
-    )
-    db.add(patient)
-    db.flush()
+    # Prevent duplicate patient records if CNIC provided
+    patient = None
+    if req.cnic:
+        clean_cnic = req.cnic.strip().replace(" ", "")
+        patient = db.query(Patient).filter(Patient.cnic == clean_cnic).first()
+
+    if not patient:
+        patient = Patient(
+            clinic_id=clinic_id,
+            display_name=req.display_name.strip(),
+            cnic=req.cnic.strip().replace(" ", "") if req.cnic else None,
+            phone_number=req.phone_number.strip() if req.phone_number else None,
+            gender=req.gender or "other",
+            age_years=req.age_years,
+            preferred_language=PreferredLanguage(req.preferred_language),
+        )
+        db.add(patient)
+        db.flush()
+    else:
+        # Keep patient data up to date
+        patient.display_name = req.display_name.strip()
+        patient.age_years = req.age_years
+        if req.phone_number:
+            patient.phone_number = req.phone_number.strip()
 
     ticket = QueueTicket(
         clinic_id=clinic_id,
@@ -152,7 +168,19 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
     ticket.estimated_wait_minutes = (eta_min + eta_max) // 2
     db.commit()
 
+    card_type = urgency_enum.value
+    if card_type == "RED":
+        card_title = "🚨 EMERGENCY TRIAGE CARD — IMMEDIATE MEDICAL ATTENTION"
+        card_msg = "Critical indicators reported. Clinic emergency staff have been alerted to your token."
+    elif card_type == "YELLOW":
+        card_title = "⚠️ PRIORITY CARE CARD — ELEVATED TRIAGE"
+        card_msg = "Intermediate urgency. You are prioritized ahead of routine checkups."
+    else:
+        card_title = "✅ ROUTINE CONSULTATION CARD — STANDARD OPD"
+        card_msg = "Routine consultation. Your estimated consultation window is calculated below."
+
     await ws_manager.broadcast_staff(str(clinic_id), {"type": "queue.updated", "clinic_id": str(clinic_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(clinic_id), {"type": "display.updated", "clinic_id": str(clinic_id)})
 
     return IntakeCreateResponse(
         ticket=CreatedTicketSummary(
@@ -163,6 +191,9 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
             queue_position=eff_pos,
             eta_min_minutes=eta_min,
             eta_max_minutes=eta_max,
+            triage_card_type=card_type,
+            triage_card_title=card_title,
+            triage_card_message=card_msg,
         ),
         tracking_token=tracking_str,
         safety_message=SAFETY_MSG,
@@ -180,6 +211,9 @@ def track_ticket(tracking_token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
 
     clinic = db.query(Clinic).filter(Clinic.clinic_id == ticket.clinic_id).first()
+    consult = db.query(Consultation).filter(Consultation.ticket_id == ticket.ticket_id).first()
+    doctor = db.query(StaffUser).filter(StaffUser.user_id == ticket.doctor_id).first() if ticket.doctor_id else None
+
     queue_pos = None
     eta_min = None
     eta_max = None
@@ -195,6 +229,20 @@ def track_ticket(tracking_token: str, db: Session = Depends(get_db)):
             db, ticket.clinic_id, ahead_count=ahead, doctor_id=ticket.doctor_id, department_id=ticket.department_id
         )
 
+    card_type = ticket.urgency.value
+    if card_type == "RED":
+        card_title = "🚨 EMERGENCY TRIAGE CARD"
+        card_msg = "Immediate clinical attention required. Please alert clinic triage staff."
+    elif card_type == "YELLOW":
+        card_title = "⚠️ PRIORITY CARE CARD"
+        card_msg = "Elevated triage priority based on symptom severity."
+    else:
+        card_title = "✅ ROUTINE CONSULTATION CARD"
+        card_msg = "Standard outpatient consultation. Wait window estimated below."
+
+    doctor_name = doctor.full_name if doctor else ticket.called_by_doctor_name
+    room = ticket.room_number or (doctor.room_number if doctor else None)
+
     return PublicTicketTrackOut(
         token_code=ticket.token_code,
         status=ticket.status.value,
@@ -205,6 +253,12 @@ def track_ticket(tracking_token: str, db: Session = Depends(get_db)):
         clinic_notice=clinic.public_notice if clinic else "",
         safety_message=SAFETY_MSG,
         updated_at=ticket.updated_at,
+        room_number=room,
+        called_by_doctor_name=doctor_name,
+        clinician_note=consult.clinician_note if consult else None,
+        triage_card_type=card_type,
+        triage_card_title=card_title,
+        triage_card_message=card_msg,
     )
 
 
