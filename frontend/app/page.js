@@ -16,7 +16,7 @@ export default function HomePage() {
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <Link
-            href="/c/islamabad-care-clinic/join"
+            href="/c/mediflow-demo/join"
             className="rounded-xl border border-slate-200 p-5 hover:border-blue-500 hover:bg-blue-50/40 transition"
           >
             <h2 className="font-semibold text-lg text-slate-900">1. Patient QR Intake</h2>
@@ -56,7 +56,7 @@ export default function HomePage() {
           </Link>
 
           <Link
-            href="/display/demo-tv-display-token-2026"
+            href="/display/mediflow-main-display"
             className="rounded-xl border border-slate-200 p-5 hover:border-blue-500 hover:bg-blue-50/40 transition sm:col-span-2"
           >
             <h2 className="font-semibold text-lg text-slate-900">5. Waiting Room TV Display (16:9)</h2>

@@ -47,7 +47,7 @@ export default function ReceptionConsolePage() {
     try {
       const authRes = await api.staffLogin(email, password);
       setSession(authRes);
-      const cData = await api.getClinicBySlug("islamabad-care-clinic");
+      const cData = await api.getClinicBySlug("mediflow-demo");
       setClinic(cData);
       if (cData.departments?.length > 0) {
         setDepartmentId(cData.departments[0].department_id);

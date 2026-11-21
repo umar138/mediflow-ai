@@ -17,6 +17,7 @@ class PublicClinicOut(BaseModel):
     name: str
     public_notice: str
     departments: List[DepartmentOut]
+    display_token: str
 
 
 class IntakeCreateRequest(BaseModel):

@@ -35,6 +35,11 @@ def get_public_clinic(slug: str, db: Session = Depends(get_db)):
     clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active.is_(True)).first()
     if not clinic:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    # Ensure a display token exists for this clinic
+    from app.services.display_token import get_or_create_display_token
+    display_token = get_or_create_display_token(db, clinic.clinic_id)
+
     depts = db.query(Department).filter(Department.clinic_id == clinic.clinic_id, Department.is_active.is_(True)).all()
     return PublicClinicOut(
         clinic_id=clinic.clinic_id,
@@ -42,6 +47,7 @@ def get_public_clinic(slug: str, db: Session = Depends(get_db)):
         name=clinic.name,
         public_notice=clinic.public_notice,
         departments=[DepartmentOut(department_id=d.department_id, clinic_id=d.clinic_id, code=d.code, name=d.name) for d in depts],
+        display_token=display_token,
     )
 
 
