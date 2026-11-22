@@ -31,6 +31,14 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Hospitals
+  getHospitals() {
+    return request(`/api/v1/hospitals`);
+  },
+  getDoctorsByHospital(slug) {
+    return request(`/api/v1/hospitals/${encodeURIComponent(slug)}/doctors`);
+  },
+
   getClinicBySlug(slug) {
     return request(`/api/v1/public/clinics/${encodeURIComponent(slug)}`);
   },
@@ -90,6 +98,20 @@ export const api = {
     return request(`/api/v1/staff/tickets/${encodeURIComponent(ticketId)}`, { token });
   },
   createWalkIn(payload, token) {
+    return request(`/api/v1/staff/tickets`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  },
+  // New helper to create a ticket that includes a doctor_id (used in hospital flow)
+  createTicketWithDoctor(payload, token) {
+    return request(`/api/v1/staff/tickets`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  },
     return request(`/api/v1/staff/tickets`, {
       method: "POST",
       token,
