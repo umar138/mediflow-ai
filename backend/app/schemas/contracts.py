@@ -31,6 +31,7 @@ class IntakeCreateRequest(BaseModel):
     input_mode: Literal["TEXT", "VOICE"] = "TEXT"
     department_id: UUID
     patient_reported_duration: Optional[str] = Field(default=None, max_length=100)
+    card_type: Optional[str] = None
 
 
 class CreatedTicketSummary(BaseModel):
@@ -98,6 +99,7 @@ class WalkInTicketCreateRequest(BaseModel):
     symptom_text: str = Field(..., min_length=1, max_length=2000)
     input_mode: Literal["TEXT", "VOICE"] = "TEXT"
     patient_reported_duration: Optional[str] = None
+    card_type: Optional[str] = None
 
 
 class VitalsCreateRequest(BaseModel):
@@ -138,6 +140,7 @@ class QueueTicketItemOut(BaseModel):
     patient_name: Optional[str] = None
     patient_cnic: Optional[str] = None
     patient_phone: Optional[str] = None
+    department_name: Optional[str] = None
     triage_card_type: str = "GREEN"
 
 
@@ -151,6 +154,11 @@ class TicketActionRequest(BaseModel):
     doctor_id: Optional[UUID] = None
     clinician_note: Optional[str] = None
     room_number: Optional[str] = None
+    diagnosis: Optional[str] = None
+    prescription_medicines: Optional[List[dict]] = None
+    lab_tests: Optional[str] = None
+    advice: Optional[str] = None
+    follow_up: Optional[str] = None
 
 
 class DelayCreateRequest(BaseModel):
@@ -164,6 +172,7 @@ class PublicDisplayOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
     clinic_name: str
     now_serving: List[str]
+    now_serving_status: Optional[dict[str, str]] = None
     next_up: List[str]
     clinic_status: str
     public_notice: str
@@ -203,27 +212,41 @@ class PatientAuthResponse(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     identifier: str = Field(..., description="Email or CNIC")
+    new_password: Optional[str] = None
 
 
 class ForgotPasswordResponse(BaseModel):
     status: str
     message: str
+    recovered_password: Optional[str] = None
     reset_token: Optional[str] = None
 
 
 class PatientHistoryItem(BaseModel):
     ticket_id: UUID
     token_code: str
+    tracking_token: Optional[str] = None
     visit_date: datetime
     department_name: str
     doctor_name: Optional[str] = None
     doctor_degrees: Optional[str] = None
+    doctor_license: Optional[str] = None
     room_number: Optional[str] = None
     status: str
     urgency: str
     triage_card_type: str
     symptoms: str
     clinician_note: Optional[str] = None
+    diagnosis: Optional[str] = None
+    prescription_medicines: Optional[List[dict]] = None
+    lab_tests: Optional[str] = None
+    advice: Optional[str] = None
+    follow_up: Optional[str] = None
+    vitals: Optional[dict] = None
+    queue_position: Optional[int] = None
+    ahead_count: Optional[int] = None
+    eta_min_minutes: Optional[int] = None
+    eta_max_minutes: Optional[int] = None
 
 
 class PatientHistoryResponse(BaseModel):

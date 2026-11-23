@@ -64,6 +64,18 @@ export default function HomePage() {
               Sanitized public screen showing token codes, clinic status, and notices only.
             </p>
           </Link>
+          <Link
+            href="/patient"
+            className="rounded-xl border border-blue-300 bg-blue-50/50 p-5 hover:border-blue-600 hover:bg-blue-50 transition sm:col-span-2"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-lg text-blue-900">👤 6. Patient Portal (Login / Register / Live Tracking)</h2>
+              <span className="text-xs font-semibold bg-blue-600 text-white px-2.5 py-0.5 rounded-full">New</span>
+            </div>
+            <p className="mt-1 text-sm text-slate-700">
+              Sign in with CNIC or Email, view your real-time queue token, password recovery, and past medical consultation records.
+            </p>
+          </Link>
         </div>
       </div>
     </main>

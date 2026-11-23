@@ -7,8 +7,29 @@ class ConnectionManager:
         self.staff_connections: Dict[str, Set[WebSocket]] = {}
         self.display_connections: Dict[str, Set[WebSocket]] = {}
         self.ticket_connections: Dict[str, Set[WebSocket]] = {}
+        self.doctor_connections: Dict[str, Set[WebSocket]] = {}
         # Map display_token -> clinic_id so we can broadcast across all displays in a clinic
         self.display_to_clinic: Dict[str, str] = {}
+
+    async def connect_doctor(self, user_id: str, websocket: WebSocket):
+        await websocket.accept()
+        self.doctor_connections.setdefault(user_id, set()).add(websocket)
+
+    def disconnect_doctor(self, user_id: str, websocket: WebSocket):
+        if user_id in self.doctor_connections:
+            self.doctor_connections[user_id].discard(websocket)
+
+    async def broadcast_doctor(self, user_id: str, message: dict):
+        conns = list(self.doctor_connections.get(user_id, set()))
+        for ws in conns:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                self.disconnect_doctor(user_id, ws)
+
+    async def broadcast_all_doctors(self, message: dict):
+        for user_id in list(self.doctor_connections.keys()):
+            await self.broadcast_doctor(user_id, message)
 
     async def connect_staff(self, clinic_id: str, websocket: WebSocket):
         await websocket.accept()
@@ -25,6 +46,8 @@ class ConnectionManager:
                 await ws.send_json(message)
             except Exception:
                 self.disconnect_staff(clinic_id, ws)
+        # Also broadcast to all active doctor dashboard websockets
+        await self.broadcast_all_doctors(message)
 
     async def connect_display(self, display_token: str, websocket: WebSocket, clinic_id: str = ""):
         await websocket.accept()
@@ -70,3 +93,4 @@ class ConnectionManager:
 
 
 ws_manager = ConnectionManager()
+manager = ws_manager

@@ -22,6 +22,7 @@ CREATE TABLE doctors (
     hospital_id UUID NOT NULL REFERENCES hospitals(hospital_id) ON DELETE CASCADE,
     email CITEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
+    cnic      Text NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     specialization_id UUID NOT NULL REFERENCES specializations(specialization_id),
     is_active BOOLEAN NOT NULL DEFAULT TRUE,

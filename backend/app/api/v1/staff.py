@@ -59,6 +59,7 @@ def _build_ticket_item(db: Session, ticket: QueueTicket, ahead_count: int = 0) -
     )
     patient = db.query(Patient).filter(Patient.patient_id == ticket.patient_id).first()
     doctor = db.query(StaffUser).filter(StaffUser.user_id == ticket.doctor_id).first() if ticket.doctor_id else None
+    dept = db.query(Department).filter(Department.department_id == ticket.department_id).first() if ticket.department_id else None
 
     eta_min, eta_max, _ = calculate_eta_range(
         db,
@@ -94,6 +95,7 @@ def _build_ticket_item(db: Session, ticket: QueueTicket, ahead_count: int = 0) -
         patient_name=patient.display_name if patient else "Patient",
         patient_cnic=patient.cnic if patient else None,
         patient_phone=patient.phone_number if patient else None,
+        department_name=dept.name if dept else None,
         triage_card_type=ticket.urgency.value,
     )
 
@@ -118,7 +120,15 @@ async def create_walkin_ticket(
         patient_reported_duration=req.patient_reported_duration,
         department_name=dept.name,
     ))
-    urgency_enum = UrgencyTier(triage_res.urgency_tier)
+    selected_card = (req.card_type or "").upper().strip()
+    if selected_card in {"RED", "YELLOW", "GREEN"}:
+        final_urg = more_severe(triage_res.urgency_tier, selected_card)
+        urgency_enum = UrgencyTier(final_urg)
+        if selected_card == "RED" and "Staff designated patient as Emergency (RED Card)." not in triage_res.red_flag_reasons:
+            triage_res.red_flag_reasons.append("Staff designated patient as Emergency (RED Card).")
+    else:
+        urgency_enum = UrgencyTier(triage_res.urgency_tier)
+
     now = datetime.now(timezone.utc)
     score, _ = compute_priority_score(urgency_enum, now, now=now)
 
@@ -394,8 +404,19 @@ def _transition_ticket(
             consult.doctor_id = doc_uuid
             consult.completed_at = now
             consult.duration_seconds = dur_secs
-            if req and req.clinician_note:
-                consult.clinician_note = req.clinician_note
+            if req:
+                if req.clinician_note is not None:
+                    consult.clinician_note = req.clinician_note
+                if req.diagnosis is not None:
+                    consult.diagnosis = req.diagnosis
+                if req.prescription_medicines is not None:
+                    consult.prescription_medicines = req.prescription_medicines
+                if req.lab_tests is not None:
+                    consult.lab_tests = req.lab_tests
+                if req.advice is not None:
+                    consult.advice = req.advice
+                if req.follow_up is not None:
+                    consult.follow_up = req.follow_up
         else:
             db.add(Consultation(
                 ticket_id=ticket.ticket_id,
@@ -404,6 +425,11 @@ def _transition_ticket(
                 completed_at=now,
                 duration_seconds=dur_secs,
                 clinician_note=req.clinician_note if req else None,
+                diagnosis=req.diagnosis if req else None,
+                prescription_medicines=req.prescription_medicines if req else None,
+                lab_tests=req.lab_tests if req else None,
+                advice=req.advice if req else None,
+                follow_up=req.follow_up if req else None,
             ))
 
     ticket.status = target_status

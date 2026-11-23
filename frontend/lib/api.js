@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 async function request(path, options = {}) {
   const { token, body, ...rest } = options;
@@ -31,6 +31,14 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  // Doctor Auth (Screenshot 1)
+  doctorLogin(email, password) {
+    return request(`/api/v1/doctor/auth/login`, {
+      method: "POST",
+      body: { email, password },
+    });
+  },
+
   // Hospitals
   getHospitals() {
     return request(`/api/v1/hospitals`);
@@ -104,14 +112,7 @@ export const api = {
       body: payload,
     });
   },
-  // New helper to create a ticket that includes a doctor_id (used in hospital flow)
   createTicketWithDoctor(payload, token) {
-    return request(`/api/v1/staff/tickets`, {
-      method: "POST",
-      token,
-      body: payload,
-    });
-  },
     return request(`/api/v1/staff/tickets`, {
       method: "POST",
       token,

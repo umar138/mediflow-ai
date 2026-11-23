@@ -64,14 +64,31 @@ export default function WaitingRoomDisplayPage({ params }) {
           </div>
           <div className="my-6 flex flex-wrap gap-4">
             {(board?.now_serving || []).length > 0 ? (
-              board.now_serving.map((code) => (
-                <span
-                  key={code}
-                  className="rounded-2xl bg-emerald-500 text-slate-950 px-7 py-4 text-6xl font-black tracking-wider"
-                >
-                  {code}
-                </span>
-              ))
+              board.now_serving.map((code) => {
+                const itemStatus = board.now_serving_status?.[code] || "CALLED";
+                const isConsulting = itemStatus === "IN_CONSULTATION";
+                return (
+                  <div
+                    key={code}
+                    className={`rounded-2xl px-7 py-4 text-center border-2 transition-all ${
+                      isConsulting
+                        ? "bg-blue-600 text-white border-blue-400 shadow-lg shadow-blue-500/30"
+                        : "bg-emerald-500 text-slate-950 border-emerald-300 animate-pulse"
+                    }`}
+                  >
+                    <div className="text-6xl font-black tracking-wider">{code}</div>
+                    <div
+                      className={`text-xs font-bold uppercase tracking-widest mt-1 px-2 py-0.5 rounded-full inline-block ${
+                        isConsulting
+                          ? "bg-blue-800 text-blue-100"
+                          : "bg-slate-900 text-emerald-300"
+                      }`}
+                    >
+                      {isConsulting ? "In Consultation" : "Called • Enter Room"}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
               <span className="text-3xl text-slate-400">Please wait for your token</span>
             )}

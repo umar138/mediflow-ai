@@ -244,6 +244,11 @@ class Consultation(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     clinician_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prescription_medicines: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    lab_tests: Mapped[str | None] = mapped_column(Text, nullable=True)
+    advice: Mapped[str | None] = mapped_column(Text, nullable=True)
+    follow_up: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (
         Index("ix_consultation_doctor_completed", "doctor_id", "completed_at"),

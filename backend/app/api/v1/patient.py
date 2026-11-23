@@ -7,13 +7,15 @@ from app.core.security import verify_password, get_password_hash, create_access_
 from app.models.entities import (
     Patient, Clinic, Department, StaffUser, QueueTicket,
     Consultation, IntakeRecord, TriageAssessment, PasswordResetToken,
-    TicketStatus, PreferredLanguage
+    PatientTrackingToken, VitalObservation, TicketStatus, PreferredLanguage
 )
 from app.schemas.contracts import (
     PatientRegisterRequest, PatientLoginRequest, PatientAuthResponse,
     ForgotPasswordRequest, ForgotPasswordResponse,
     PatientHistoryResponse, PatientHistoryItem
 )
+from app.services.queue import get_sorted_waiting_tickets
+from app.services.eta import calculate_eta_range
 
 router = APIRouter(prefix="/patient", tags=["patient"])
 
@@ -149,21 +151,21 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
         .first()
     )
 
-    reset_token = secrets.token_urlsafe(32)
-    email_target = patient.email if (patient and patient.email) else ident
+    if not patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No patient account found with CNIC/Email: {ident}",
+        )
 
-    if patient:
-        db.add(PasswordResetToken(
-            email=email_target,
-            token=reset_token,
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
-        ))
-        db.commit()
+    new_pass = req.new_password.strip() if req.new_password else f"MediFlow@{secrets.randbelow(8999) + 1000}"
+    patient.password_hash = get_password_hash(new_pass)
+    db.commit()
 
     return ForgotPasswordResponse(
         status="success",
-        message=f"Password reset instructions have been dispatched to {email_target}. You can use the generated reset token.",
-        reset_token=reset_token,
+        message=f"آپ کا پاسورڈ یہ ہے: {new_pass}",
+        recovered_password=new_pass,
+        reset_token=None,
     )
 
 
@@ -200,20 +202,58 @@ def get_patient_history(
         doc = db.query(StaffUser).filter(StaffUser.user_id == tkt.doctor_id).first() if tkt.doctor_id else None
         consult = db.query(Consultation).filter(Consultation.ticket_id == tkt.ticket_id).first()
         intake = db.query(IntakeRecord).filter(IntakeRecord.ticket_id == tkt.ticket_id).first()
+        tok_row = db.query(PatientTrackingToken).filter(PatientTrackingToken.ticket_id == tkt.ticket_id).first()
+        vital = db.query(VitalObservation).filter(VitalObservation.ticket_id == tkt.ticket_id).first()
+
+        vitals_dict = None
+        if vital:
+            vitals_dict = {
+                "systolic_bp": vital.systolic_bp,
+                "diastolic_bp": vital.diastolic_bp,
+                "temperature_c": float(vital.temperature_c) if vital.temperature_c is not None else None,
+                "spo2_percent": vital.spo2_percent,
+                "pulse_bpm": vital.pulse_bpm,
+            }
+
+        ahead = 0
+        queue_pos = None
+        eta_min = None
+        eta_max = None
+        if tkt.status == TicketStatus.WAITING:
+            sorted_waiting = get_sorted_waiting_tickets(db, tkt.clinic_id, tkt.department_id)
+            for idx, (t_item, _, _) in enumerate(sorted_waiting):
+                if t_item.ticket_id == tkt.ticket_id:
+                    ahead = idx
+                    break
+            eta_min, eta_max, queue_pos = calculate_eta_range(
+                db, tkt.clinic_id, ahead_count=ahead, doctor_id=tkt.doctor_id, department_id=tkt.department_id
+            )
 
         items.append(PatientHistoryItem(
             ticket_id=tkt.ticket_id,
             token_code=tkt.token_code,
+            tracking_token=tok_row.tracking_token if tok_row else None,
             visit_date=tkt.checked_in_at,
             department_name=dept.name if dept else "General",
             doctor_name=doc.full_name if doc else tkt.called_by_doctor_name,
             doctor_degrees=doc.degrees if doc else None,
+            doctor_license=doc.license_number if doc else None,
             room_number=tkt.room_number or (doc.room_number if doc else None),
             status=tkt.status.value,
             urgency=tkt.urgency.value,
             triage_card_type=tkt.urgency.value,
             symptoms=intake.symptom_text if intake else "Reported symptoms",
             clinician_note=consult.clinician_note if consult else None,
+            diagnosis=consult.diagnosis if consult else None,
+            prescription_medicines=consult.prescription_medicines if consult else None,
+            lab_tests=consult.lab_tests if consult else None,
+            advice=consult.advice if consult else None,
+            follow_up=consult.follow_up if consult else None,
+            vitals=vitals_dict,
+            queue_position=queue_pos,
+            ahead_count=ahead if tkt.status == TicketStatus.WAITING else 0,
+            eta_min_minutes=eta_min,
+            eta_max_minutes=eta_max,
         ))
 
     return PatientHistoryResponse(

@@ -15,7 +15,7 @@ from app.schemas.contracts import (
     CreatedTicketSummary, PublicTicketTrackOut, PublicDisplayOut
 )
 from app.schemas.triage import TriageInput
-from app.services.triage import run_hybrid_triage
+from app.services.triage import run_hybrid_triage, more_severe
 from app.services.queue import get_sorted_waiting_tickets, compute_priority_score
 from app.services.eta import calculate_eta_range, get_active_delay_minutes
 from app.services.ws_manager import ws_manager
@@ -75,7 +75,15 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
         department_name=dept.name,
     ))
 
-    urgency_enum = UrgencyTier(triage_res.urgency_tier)
+    selected_card = (req.card_type or "").upper().strip()
+    if selected_card in {"RED", "YELLOW", "GREEN"}:
+        final_urgency_str = more_severe(triage_res.urgency_tier, selected_card)
+        urgency_enum = UrgencyTier(final_urgency_str)
+        if selected_card == "RED" and "Patient self-reported severe emergency condition (Emergency RED Card selected)." not in triage_res.red_flag_reasons:
+            triage_res.red_flag_reasons.append("Patient self-reported severe emergency condition (Emergency RED Card selected).")
+    else:
+        urgency_enum = UrgencyTier(triage_res.urgency_tier)
+
     now = datetime.now(timezone.utc)
     score, _ = compute_priority_score(urgency_enum, now, now=now)
 
@@ -286,6 +294,7 @@ def get_public_display(display_token: str, db: Session = Depends(get_db)):
         QueueTicket.status.in_([TicketStatus.CALLED, TicketStatus.IN_CONSULTATION]),
     ).all()
     now_serving = [t.token_code for t in active_tickets]
+    now_serving_status = {t.token_code: t.status.value for t in active_tickets}
 
     waiting_sorted = get_sorted_waiting_tickets(db, clinic.clinic_id)
     next_up = [t.token_code for t, _, _ in waiting_sorted[:6]]
@@ -296,6 +305,7 @@ def get_public_display(display_token: str, db: Session = Depends(get_db)):
     return PublicDisplayOut(
         clinic_name=clinic.name,
         now_serving=now_serving,
+        now_serving_status=now_serving_status,
         next_up=next_up,
         clinic_status=clinic_status,
         public_notice=clinic.public_notice,

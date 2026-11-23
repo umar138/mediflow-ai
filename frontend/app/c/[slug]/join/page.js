@@ -12,12 +12,14 @@ export default function PatientJoinPage({ params }) {
   const [submitting, setSubmitting] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
+  const [cnic, setCnic] = useState("");
   const [ageYears, setAgeYears] = useState("");
   const [preferredLanguage, setPreferredLanguage] = useState("roman_ur");
   const [departmentId, setDepartmentId] = useState("");
   const [symptomText, setSymptomText] = useState("");
   const [duration, setDuration] = useState("");
   const [inputMode, setInputMode] = useState("TEXT");
+  const [cardType, setCardType] = useState("AUTO");
   const [voiceNote, setVoiceNote] = useState("");
   const [createdResult, setCreatedResult] = useState(null);
 
@@ -43,6 +45,17 @@ export default function PatientJoinPage({ params }) {
       .finally(() => {
         if (active) setLoadingClinic(false);
       });
+
+    // Auto-fill patient profile if logged in
+    const savedToken = typeof window !== "undefined" ? localStorage.getItem("patient_token") : null;
+    if (savedToken) {
+      api.getPatientProfile(savedToken).then((p) => {
+        if (!active || !p) return;
+        if (p.full_name) setDisplayName(p.full_name);
+        if (p.age_years) setAgeYears(String(p.age_years));
+        if (p.cnic) setCnic(p.cnic);
+      }).catch(() => {});
+    }
     return () => {
       active = false;
     };
@@ -98,14 +111,17 @@ export default function PatientJoinPage({ params }) {
 
     setSubmitting(true);
     try {
+      const cleanCnic = cnic ? cnic.trim().replace(" ", "") : undefined;
       const payload = {
         display_name: displayName.trim(),
+        cnic: cleanCnic || undefined,
         age_years: Number(ageYears),
         preferred_language: preferredLanguage,
         symptom_text: symptomText.trim(),
         input_mode: inputMode,
         department_id: departmentId,
         patient_reported_duration: duration.trim() || null,
+        card_type: cardType !== "AUTO" ? cardType : undefined,
       };
       const res = await api.createIntake(clinic.clinic_id, payload);
       setCreatedResult(res);
@@ -196,6 +212,19 @@ export default function PatientJoinPage({ params }) {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-slate-700">
+                CNIC / شناختی کارڈ نمبر (Optional)
+              </label>
+              <input
+                type="text"
+                value={cnic}
+                onChange={(e) => setCnic(e.target.value)}
+                placeholder="e.g. 42501-5373126-7 (Links token to your patient portal)"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-mono text-slate-800"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-slate-700">Department</label>
               <select
                 value={departmentId}
@@ -245,6 +274,91 @@ export default function PatientJoinPage({ params }) {
                 placeholder="e.g. 2 days"
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
               />
+            </div>
+
+            {/* Triage Card / Severity Selection */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-800 mb-1">
+                Triage Card / کارڈ کی قسم (Severity Selection)
+              </label>
+              <p className="text-xs text-slate-500 mb-2">
+                If the condition is serious or an emergency, select the RED Card for immediate escalation.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <button
+                  type="button"
+                  onClick={() => setCardType("AUTO")}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                    cardType === "AUTO"
+                      ? "border-blue-600 bg-blue-50 ring-2 ring-blue-500"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                    <span>🤖</span>
+                    <span>Auto-Triage</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1">AI Evaluates</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCardType("RED")}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                    cardType === "RED"
+                      ? "border-red-600 bg-red-50 ring-2 ring-red-500"
+                      : "border-red-200 bg-red-50/50 hover:bg-red-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-red-700">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse"></span>
+                    <span>RED Card</span>
+                  </div>
+                  <span className="text-[10px] text-red-600 font-semibold mt-1">🚨 Serious / Emergency</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCardType("YELLOW")}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                    cardType === "YELLOW"
+                      ? "border-amber-500 bg-amber-50 ring-2 ring-amber-400"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-amber-700">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    <span>YELLOW Card</span>
+                  </div>
+                  <span className="text-[10px] text-amber-700 mt-1">⚠️ Urgent / Priority</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCardType("GREEN")}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                    cardType === "GREEN"
+                      ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-500"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-700">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span>GREEN Card</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-700 mt-1">✅ Standard Routine</span>
+                </button>
+              </div>
+
+              {cardType === "RED" && (
+                <div className="mt-2.5 rounded-xl border-2 border-red-500 bg-red-50 p-3 text-red-950 flex items-start gap-2">
+                  <span className="text-xl">🚨</span>
+                  <div className="text-xs">
+                    <span className="font-bold">CRITICAL / SERIOUS ALERT:</span> You selected RED Card.
+                    You will be assigned an immediate Emergency Token (R-XXX) with highest triage priority.
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
