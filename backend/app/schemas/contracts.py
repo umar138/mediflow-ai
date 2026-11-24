@@ -94,6 +94,8 @@ class WalkInTicketCreateRequest(BaseModel):
     clinic_id: UUID
     department_id: UUID
     display_name: str = Field(..., min_length=1, max_length=150)
+    cnic: Optional[str] = None
+    phone_number: Optional[str] = None
     age_years: int = Field(..., ge=0, le=130)
     preferred_language: Literal["en", "ur", "roman_ur"] = "en"
     symptom_text: str = Field(..., min_length=1, max_length=2000)
@@ -284,3 +286,30 @@ class DoctorRegisterResponse(BaseModel):
     clinic_name: str
     access_token: str
     token_type: str = "bearer"
+
+
+class EmergencyIntakeRequest(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=500)
+    preferred_language: Literal["en", "ur", "roman_ur"] = "en"
+
+
+class TriagePreviewRequest(BaseModel):
+    symptom_text: str = Field(..., min_length=1, max_length=2000)
+    age_years: int = Field(default=30, ge=0, le=130)
+    preferred_language: Literal["en", "ur", "roman_ur"] = "en"
+
+
+class TriagePreviewResponse(BaseModel):
+    urgency_tier: str
+    card_title: str
+    red_flag_reasons: List[str] = Field(default_factory=list)
+    recommended_department: Optional[str] = None
+
+
+class ManualPatientInfoUpdateRequest(BaseModel):
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=150)
+    age_years: Optional[int] = Field(default=None, ge=0, le=130)
+    cnic: Optional[str] = Field(default=None, max_length=25)
+    phone_number: Optional[str] = Field(default=None, max_length=30)
+    symptom_text: Optional[str] = Field(default=None, max_length=2000)
+    department_id: Optional[UUID] = None

@@ -56,11 +56,26 @@ export const api = {
       body: payload,
     });
   },
+  createEmergencyIntake(clinicId, payload = {}) {
+    return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/emergency-intake`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+  triagePreview(payload) {
+    return request(`/api/v1/public/triage-preview`, {
+      method: "POST",
+      body: payload,
+    });
+  },
   trackTicket(trackingToken) {
     return request(`/api/v1/public/tickets/${encodeURIComponent(trackingToken)}`);
   },
   getPublicDisplay(displayToken) {
     return request(`/api/v1/public/display/${encodeURIComponent(displayToken)}`);
+  },
+  getLiveSummary(clinicId) {
+    return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/live-summary`);
   },
   staffLogin(email, password) {
     return request(`/api/v1/auth/login`, {
@@ -150,6 +165,13 @@ export const api = {
   updateClinicDelay(clinicId, payload, token) {
     return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/delay`, {
       method: "POST",
+      token,
+      body: payload,
+    });
+  },
+  updateTicketPatientInfo(ticketId, payload, token) {
+    return request(`/api/v1/staff/tickets/${encodeURIComponent(ticketId)}/patient-info`, {
+      method: "PATCH",
       token,
       body: payload,
     });

@@ -16,7 +16,7 @@ from app.models.entities import (
 from app.schemas.contracts import (
     WalkInTicketCreateRequest, IntakeCreateResponse, CreatedTicketSummary,
     VitalsCreateRequest, QueueResponseOut, QueueTicketItemOut, VitalsSnapshot,
-    TicketActionRequest, DelayCreateRequest
+    TicketActionRequest, DelayCreateRequest, ManualPatientInfoUpdateRequest
 )
 from app.schemas.triage import TriageInput
 from app.services.triage import run_hybrid_triage, more_severe
@@ -132,14 +132,28 @@ async def create_walkin_ticket(
     now = datetime.now(timezone.utc)
     score, _ = compute_priority_score(urgency_enum, now, now=now)
 
-    patient = Patient(
-        clinic_id=req.clinic_id,
-        display_name=req.display_name,
-        age_years=req.age_years,
-        preferred_language=PreferredLanguage(req.preferred_language),
-    )
-    db.add(patient)
-    db.flush()
+    # Link to existing patient by CNIC if provided, else create new
+    clean_cnic = req.cnic.strip().replace(" ", "") if req.cnic else None
+    patient = None
+    if clean_cnic:
+        patient = db.query(Patient).filter(Patient.cnic == clean_cnic).first()
+
+    if not patient:
+        patient = Patient(
+            clinic_id=req.clinic_id,
+            display_name=req.display_name.strip(),
+            cnic=clean_cnic,
+            phone_number=req.phone_number.strip() if req.phone_number else None,
+            age_years=req.age_years,
+            preferred_language=PreferredLanguage(req.preferred_language),
+        )
+        db.add(patient)
+        db.flush()
+    else:
+        patient.display_name = req.display_name.strip()
+        patient.age_years = req.age_years
+        if req.phone_number:
+            patient.phone_number = req.phone_number.strip()
 
     count = db.query(QueueTicket).filter(QueueTicket.clinic_id == req.clinic_id).count() + 1
     prefix = {"RED": "R", "YELLOW": "Y", "GREEN": "G"}[urgency_enum.value]
@@ -343,6 +357,105 @@ def get_ticket_detail(
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     _assert_same_clinic(ctx, ticket.clinic_id)
+    return _build_ticket_item(db, ticket, ahead_count=0)
+
+
+@router.patch("/tickets/{ticket_id}/patient-info", response_model=QueueTicketItemOut)
+async def update_ticket_patient_info(
+    ticket_id: uuid.UUID,
+    req: ManualPatientInfoUpdateRequest,
+    ctx: dict = Depends(require_roles({UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.NURSE, UserRole.DOCTOR})),
+    db: Session = Depends(get_db),
+):
+    """
+    Allows staff to manually fill or update patient details (Name, Age, CNIC, Phone, Symptoms)
+    for Emergency RED Card or Walk-In tickets.
+    """
+    ticket = db.query(QueueTicket).filter(QueueTicket.ticket_id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    _assert_same_clinic(ctx, ticket.clinic_id)
+
+    patient = db.query(Patient).filter(Patient.patient_id == ticket.patient_id).first()
+    clean_cnic = req.cnic.strip().replace(" ", "") if req.cnic else None
+
+    if clean_cnic:
+        existing_patient = db.query(Patient).filter(Patient.cnic == clean_cnic).first()
+        if existing_patient and existing_patient.patient_id != ticket.patient_id:
+            # Link ticket to existing registered patient so it shows up in their portal
+            ticket.patient_id = existing_patient.patient_id
+            patient = existing_patient
+
+    if patient:
+        if req.display_name is not None and req.display_name.strip():
+            patient.display_name = req.display_name.strip()
+        if req.age_years is not None:
+            patient.age_years = req.age_years
+        if clean_cnic:
+            patient.cnic = clean_cnic
+        if req.phone_number is not None and req.phone_number.strip():
+            patient.phone_number = req.phone_number.strip()
+
+    if req.department_id is not None:
+        dept = db.query(Department).filter(
+            Department.department_id == req.department_id,
+            Department.clinic_id == ticket.clinic_id,
+        ).first()
+        if dept:
+            ticket.department_id = dept.department_id
+
+    if req.symptom_text is not None and req.symptom_text.strip():
+        intake = db.query(IntakeRecord).filter(IntakeRecord.ticket_id == ticket.ticket_id).first()
+        if intake:
+            intake.symptom_text = req.symptom_text.strip()
+        else:
+            db.add(IntakeRecord(
+                ticket_id=ticket.ticket_id,
+                symptom_text=req.symptom_text.strip(),
+                input_mode=InputMode.TEXT,
+            ))
+
+        triage_res = run_hybrid_triage(TriageInput(
+            display_name=patient.display_name if patient else "Patient",
+            age_years=patient.age_years if patient else 30,
+            preferred_language=patient.preferred_language.value if patient else "en",
+            symptom_text=req.symptom_text.strip(),
+            input_mode="TEXT",
+        ))
+        # Never downgrade an emergency RED card
+        new_urg = UrgencyTier(more_severe(ticket.urgency.value, triage_res.urgency_tier))
+        ticket.urgency = new_urg
+        score, _ = compute_priority_score(new_urg, ticket.checked_in_at)
+        ticket.priority_score = score
+
+        db.add(TriageAssessment(
+            ticket_id=ticket.ticket_id,
+            clinic_id=ticket.clinic_id,
+            source=TriageSource(triage_res.source),
+            urgency=new_urg,
+            normalized_symptoms=triage_res.normalized_symptoms,
+            red_flag_reasons=triage_res.red_flag_reasons,
+            uncertainties=triage_res.uncertainties,
+            recommended_department=triage_res.recommended_department,
+            doctor_pre_brief=triage_res.doctor_pre_brief,
+            model_provider=triage_res.model_provider,
+            model_name=triage_res.model_name,
+            prompt_version=triage_res.prompt_version,
+            rule_set_version=triage_res.rule_set_version,
+            input_hash=triage_res.input_hash,
+        ))
+
+    db.add(AuditLog(
+        clinic_id=ticket.clinic_id,
+        actor_user_id=ctx["user_id"],
+        entity_type="queue_ticket",
+        entity_id=str(ticket.ticket_id),
+        action="MANUAL_PATIENT_INFO_UPDATED",
+        details={"token_code": ticket.token_code},
+    ))
+    db.commit()
+    await ws_manager.broadcast_staff(str(ticket.clinic_id), {"type": "queue.updated", "clinic_id": str(ticket.clinic_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(ticket.clinic_id), {"type": "display.updated", "clinic_id": str(ticket.clinic_id)})
     return _build_ticket_item(db, ticket, ahead_count=0)
 
 

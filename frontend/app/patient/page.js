@@ -29,6 +29,14 @@ export default function PatientPortalPage() {
   const [bookDuration, setBookDuration] = useState("");
   const [bookCardType, setBookCardType] = useState("AUTO");
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookTarget, setBookTarget] = useState("self"); // "self" | "other"
+  const [otherName, setOtherName] = useState("");
+  const [otherCnic, setOtherCnic] = useState("");
+  const [otherAge, setOtherAge] = useState("");
+  const [otherPhone, setOtherPhone] = useState("");
+  const [emergencyLoading, setEmergencyLoading] = useState(false);
+  const [instantEmergencyResult, setInstantEmergencyResult] = useState(null);
+  const [bookAiPreview, setBookAiPreview] = useState(null);
 
   // Login form states
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -60,6 +68,39 @@ export default function PatientPortalPage() {
       }
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const text = bookSymptoms.trim();
+    if (text.length < 3) {
+      setBookAiPreview(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api
+        .triagePreview({
+          symptom_text: text,
+          age_years: bookTarget === "other" && otherAge ? Number(otherAge) : profile?.age_years || 30,
+          preferred_language: "roman_ur",
+        })
+        .then((res) => setBookAiPreview(res))
+        .catch(() => {});
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [bookSymptoms, bookTarget, otherAge, profile]);
+
+  async function handleInstantEmergency() {
+    if (!clinic) return;
+    setErrorMsg("");
+    setEmergencyLoading(true);
+    try {
+      const res = await api.createEmergencyIntake(clinic.clinic_id, {});
+      setInstantEmergencyResult(res);
+    } catch (err) {
+      setErrorMsg(err.message || "Failed to generate emergency RED card.");
+    } finally {
+      setEmergencyLoading(false);
+    }
+  }
 
   async function loadPatientData(token) {
     if (!token) return;
@@ -208,12 +249,25 @@ export default function PatientPortalPage() {
     setBookingLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
+
+    const isSelf = bookTarget === "self";
+    const targetName = isSelf ? profile.full_name : otherName.trim();
+    const targetCnic = isSelf ? profile.cnic : otherCnic.trim().replace(" ", "");
+    const targetAge = isSelf ? profile.age_years : (Number(otherAge) || 30);
+    const targetPhone = isSelf ? profile.phone_number : (otherPhone.trim() || undefined);
+
+    if (!targetName) {
+      setErrorMsg("براہ کرم مریض کا نام درج کریں۔");
+      setBookingLoading(false);
+      return;
+    }
+
     try {
       const payload = {
-        display_name: profile.full_name,
-        cnic: profile.cnic,
-        age_years: profile.age_years,
-        phone_number: profile.phone_number,
+        display_name: targetName,
+        cnic: targetCnic || undefined,
+        age_years: targetAge,
+        phone_number: targetPhone,
         department_id: bookDeptId,
         symptom_text: bookSymptoms.trim(),
         patient_reported_duration: bookDuration.trim() || null,
@@ -223,9 +277,18 @@ export default function PatientPortalPage() {
       const res = await api.createIntake(clinic.clinic_id, payload);
       setBookSymptoms("");
       setBookDuration("");
-      setDashboardTab("live");
-      setSuccessMsg(`🎉 نیا لائیو ٹوکن ${res.ticket.token_code} کامیابی سے جاری ہو گیا ہے!`);
-      await loadPatientData(session.access_token);
+      setOtherName("");
+      setOtherCnic("");
+      setOtherAge("");
+      setOtherPhone("");
+
+      if (isSelf) {
+        setDashboardTab("live");
+        setSuccessMsg(`🎉 آپ کے اپنے اکاؤنٹ کا نیا لائیو ٹوکن ${res.ticket.token_code} جاری ہو گیا ہے!`);
+        await loadPatientData(session.access_token);
+      } else {
+        setSuccessMsg(`🎉 نیا ٹوکن ${res.ticket.token_code} مریض "${targetName}" (${targetCnic ? `CNIC: ${targetCnic}` : "بغیر CNIC"}) کے لیے جاری ہو گیا ہے۔ یہ ٹوکن ان کے اپنے پورٹل اکاؤنٹ میں جائے گا!`);
+      }
     } catch (err) {
       setErrorMsg(err.message || "Failed to issue new queue token.");
     } finally {
@@ -302,29 +365,34 @@ export default function PatientPortalPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 mb-6">
-        <div>
-          <Link href="/" className="text-xs font-semibold text-blue-600 hover:underline">
-            ← واپس ہب (Back to Hub)
-          </Link>
-          <h1 className="text-2xl font-bold text-slate-900 mt-1">
-            Patient Portal & Live Queue Tracking
-          </h1>
-          <p className="text-xs text-slate-500">
-            مریضوں کے لیے آن لائن لاگ ان، لائیو قطار ٹریکنگ اور سابقہ میڈیکل ہسٹری
-          </p>
+      <div className="glass-card rounded-3xl px-5 py-4 flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3.5">
+          <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xl shadow-md shadow-blue-600/20">
+            🏥
+          </div>
+          <div>
+            <Link href="/" className="text-xs font-bold text-blue-600 hover:underline inline-flex items-center gap-1">
+              ← واپس ہب (Back to Hub)
+            </Link>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Patient Portal & Live Queue
+            </h1>
+            <p className="text-[11px] text-slate-500">
+              مریضوں کے لیے آن لائن لاگ ان، لائیو قطار ٹریکنگ اور سابقہ میڈیکل ہسٹری
+            </p>
+          </div>
         </div>
         {session && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 bg-slate-50/90 border border-slate-200/80 rounded-2xl px-3.5 py-2">
             <div className="text-right text-xs">
               <span className="font-bold text-slate-800">{profile?.full_name}</span>
               <span className="block text-[11px] text-slate-500 font-mono">CNIC: {profile?.cnic}</span>
             </div>
             <button
               onClick={handleSignOut}
-              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100 transition"
+              className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs"
             >
-              Sign Out / لاگ آؤٹ
+              Sign Out
             </button>
           </div>
         )}
@@ -364,10 +432,483 @@ export default function PatientPortalPage() {
       )}
 
       {!session ? (
-        /* Auth Container with Tabs */
-        <div className="mx-auto max-w-md bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden my-4">
+  <div className="flex flex-col md:flex-row items-center justify-center min-h-screen bg-gradient-to-br from-teal-50 to-sky-100 py-12">
+    {/* Left side: Auth Card */}
+    <div className="glass-card rounded-3xl w-full max-w-md mx-4 p-6 shadow-xl">
+      {/* Emergency Banner */}
+      {clinic && !instantEmergencyResult && (
+        <div className="mb-4 rounded-xl border-2 border-red-600 bg-red-50 p-4 text-center">
+          <h2 className="text-sm font-extrabold text-red-800">🚨 Accident / Critical Emergency?</h2>
+          <p className="text-xs text-red-600 mt-1">بغیر نام، شناختی کارڈ یا فارم کے فوری ایمرجنسی RED کارڈ حاصل کریں۔</p>
+          <button
+            type="button"
+            onClick={handleInstantEmergency}
+            disabled={emergencyLoading}
+            className="mt-2 w-full rounded-xl bg-white px-3.5 py-2.5 text-xs font-black text-red-700 shadow hover:bg-red-50 disabled:opacity-60"
+          >
+            {emergencyLoading ? "Issuing..." : "🚨 1‑Click RED Card"}
+          </button>
+        </div>
+      )}
+
+      {/* Instant Emergency Result */}
+      {instantEmergencyResult && (
+        <div className="mb-4 rounded-3xl border-2 border-red-600 bg-red-50 p-4 text-center">
+          <p className="text-xs font-extrabold uppercase text-red-700">{instantEmergencyResult.ticket.triage_card_title}</p>
+          <p className="text-4xl font-black text-red-700 my-2">{instantEmergencyResult.ticket.token_code}</p>
+          <p className="text-xs text-red-900">{instantEmergencyResult.ticket.triage_card_message}</p>
+          <div className="flex justify-center gap-2 mt-3">
+            <Link
+              href={`/track/${encodeURIComponent(instantEmergencyResult.tracking_token)}`}
+              className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+            >
+              Open Live Emergency Tracker →
+            </Link>
+            <button
+              type="button"
+              onClick={() => setInstantEmergencyResult(null)}
+              className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex mb-4 bg-slate-100/90 rounded-md">
+        <button
+          onClick={() => { setAuthMode("login"); setErrorMsg(""); setSuccessMsg(""); }}
+          className={`flex-1 py-2 text-center transition ${authMode === "login" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+        >
+          Sign In (لاگ ان)
+        </button>
+        <button
+          onClick={() => { setAuthMode("register"); setErrorMsg(""); setSuccessMsg(""); }}
+          className={`flex-1 py-2 text-center transition ${authMode === "register" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+        >
+          Register (نیا اکاؤنٹ)
+        </button>
+        <button
+          onClick={() => { setAuthMode("forgot"); setErrorMsg(""); setSuccessMsg(""); }}
+          className={`flex-1 py-2 text-center transition ${authMode === "forgot" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+        >
+          Forgot Password
+        </button>
+      </div>
+
+      {/* Forms */}
+      <div className="p-2">
+        {authMode === "login" && (
+          <form onSubmit={handleLogin} className="space-y-4">
+            <h2 className="text-xl font-bold text-slate-900">Patient Sign In</h2>
+            <input
+              type="text"
+              required
+              placeholder="e.g. 4250153731267 or user@email.com"
+              value={loginIdentifier}
+              onChange={e => setLoginIdentifier(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              required
+              placeholder="••••••••"
+              value={loginPassword}
+              onChange={e => setLoginPassword(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-blue-600 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Authenticating..." : "Login (لاگ ان)"}
+            </button>
+          </form>
+        )}
+        {authMode === "register" && (
+          <form onSubmit={handleRegister} className="space-y-3">
+            <h2 className="text-xl font-bold text-slate-900">New Patient Registration</h2>
+            <input
+              type="text"
+              required
+              placeholder="e.g. UMAR"
+              value={regFullName}
+              onChange={e => setRegFullName(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                required
+                placeholder="4250153731267"
+                value={regCnic}
+                onChange={e => setRegCnic(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 font-mono focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="number"
+                required
+                min={1}
+                max={120}
+                placeholder="e.g. 22"
+                value={regAge}
+                onChange={e => setRegAge(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <input
+              type="email"
+              placeholder="xumarkhan66@gmail.com"
+              value={regEmail}
+              onChange={e => setRegEmail(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="tel"
+              placeholder="03115757291"
+              value={regPhone}
+              onChange={e => setRegPhone(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <input
+              type="password"
+              required
+              placeholder="کم از کم 6 ہندسے یا حروف"
+              value={regPassword}
+              onChange={e => setRegPassword(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-blue-600 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Creating Account..." : "Create Account (رجسٹر کریں)"}
+            </button>
+          </form>
+        )}
+        {authMode === "forgot" && (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <h2 className="text-xl font-bold text-slate-900">Forgot Password</h2>
+            <input
+              type="text"
+              required
+              placeholder="e.g. 4250153731267 or user@email.com"
+              value={forgotIdentifier}
+              onChange={e => setForgotIdentifier(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-amber-500 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              {loading ? "Checking Database..." : "Show My Password (پاسورڈ دکھائیں)"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+    {/* Right side: Illustration */}
+    <div className="hidden md:block w-1/2 max-w-lg mx-4">
+      <div className="h-96 bg-gradient-to-r from-teal-200 to-sky-300 rounded-3xl shadow-xl" />
+    </div>
+  </div>
+) : (
+  /* LOGGED IN PATIENT DASHBOARD */
+  <div className="space-y-6">
+    {/* Patient Profile Card */}
+    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 p-6 text-white shadow-xl">
+      <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full bg-blue-500/20 blur-2xl pointer-events-none" />
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-sky-300 bg-white/10 px-3 py-1 rounded-full">
+            Registered Patient Profile
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black text-white mt-2">
+            {profile?.full_name}
+          </h2>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-300 mt-2">
+            <span><strong className="text-white">CNIC:</strong> {profile?.cnic || "—"}</span>
+            <span><strong className="text-white">Age:</strong> {profile?.age_years} Years</span>
+            <span><strong className="text-white">Email:</strong> {profile?.email || "—"}</span>
+            <span><strong className="text-white">Phone:</strong> {profile?.phone_number || "—"}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {/* Remaining dashboard sections stay unchanged */}
+  </div>
+)}
+        <div className="flex flex-col md:flex-row items-center justify-center min-h-screen bg-gradient-to-br from-teal-50 to-sky-100 py-12">
+          {/* Left side: Auth Card */}
+          <div className="glass-card rounded-3xl w-full max-w-md mx-4 p-6 shadow-xl">
+            {/* Emergency Banner */}
+            {clinic && !instantEmergencyResult && (
+              <div className="mb-4 rounded-xl border-2 border-red-600 bg-red-50 p-4 text-center">
+                <h2 className="text-sm font-extrabold text-red-800">🚨 Accident / Critical Emergency?</h2>
+                <p className="text-xs text-red-600 mt-1">بغیر نام، شناختی کارڈ یا فارم کے فوری ایمرجنسی RED کارڈ حاصل کریں۔</p>
+                <button
+                  type="button"
+                  onClick={handleInstantEmergency}
+                  disabled={emergencyLoading}
+                  className="mt-2 w-full rounded-xl bg-white px-3.5 py-2.5 text-xs font-black text-red-700 shadow hover:bg-red-50 disabled:opacity-60"
+                >
+                  {emergencyLoading ? "Issuing..." : "🚨 1‑Click RED Card"}
+                </button>
+              </div>
+            )}
+
+            {/* Instant Emergency Result */}
+            {instantEmergencyResult && (
+              <div className="mb-4 rounded-3xl border-2 border-red-600 bg-red-50 p-4 text-center">
+                <p className="text-xs font-extrabold uppercase text-red-700">{instantEmergencyResult.ticket.triage_card_title}</p>
+                <p className="text-4xl font-black text-red-700 my-2">{instantEmergencyResult.ticket.token_code}</p>
+                <p className="text-xs text-red-900">{instantEmergencyResult.ticket.triage_card_message}</p>
+                <div className="flex justify-center gap-2 mt-3">
+                  <Link
+                    href={`/track/${encodeURIComponent(instantEmergencyResult.tracking_token)}`}
+                    className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+                  >
+                    Open Live Emergency Tracker →
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setInstantEmergencyResult(null)}
+                    className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex mb-4 bg-slate-100/90 rounded-md">
+              <button
+                onClick={() => { setAuthMode("login"); setErrorMsg(""); setSuccessMsg(""); }}
+                className={`flex-1 py-2 text-center transition ${authMode === "login" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+              >
+                Sign In (لاگ ان)
+              </button>
+              <button
+                onClick={() => { setAuthMode("register"); setErrorMsg(""); setSuccessMsg(""); }}
+                className={`flex-1 py-2 text-center transition ${authMode === "register" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+              >
+                Register (نیا اکاؤنٹ)
+              </button>
+              <button
+                onClick={() => { setAuthMode("forgot"); setErrorMsg(""); setSuccessMsg(""); }}
+                className={`flex-1 py-2 text-center transition ${authMode === "forgot" ? "bg-white text-blue-600 border-b-2 border-blue-600" : "text-slate-500 hover:text-slate-900"}`}
+              >
+                Forgot Password
+              </button>
+            </div>
+
+            {/* Forms */}
+            <div className="p-2">
+              {authMode === "login" && (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <h2 className="text-xl font-bold text-slate-900">Patient Sign In</h2>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 4250153731267 or user@email.com"
+                    value={loginIdentifier}
+                    onChange={e => setLoginIdentifier(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-xl bg-blue-600 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {loading ? "Authenticating..." : "Login (لاگ ان)"}
+                  </button>
+                </form>
+              )}
+              {authMode === "register" && (
+                <form onSubmit={handleRegister} className="space-y-3">
+                  <h2 className="text-xl font-bold text-slate-900">New Patient Registration</h2>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. UMAR"
+                    value={regFullName}
+                    onChange={e => setRegFullName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      required
+                      placeholder="4250153731267"
+                      value={regCnic}
+                      onChange={e => setRegCnic(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 font-mono focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={120}
+                      placeholder="e.g. 22"
+                      value={regAge}
+                      onChange={e => setRegAge(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <input
+                    type="email"
+                    placeholder="xumarkhan66@gmail.com"
+                    value={regEmail}
+                    onChange={e => setRegEmail(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="03115757291"
+                    value={regPhone}
+                    onChange={e => setRegPhone(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="password"
+                    required
+                    placeholder="کم از کم 6 ہندسے یا حروف"
+                    value={regPassword}
+                    onChange={e => setRegPassword(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-xl bg-blue-600 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {loading ? "Creating Account..." : "Create Account (رجسٹر کریں)"}
+                  </button>
+                </form>
+              )}
+              {authMode === "forgot" && (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <h2 className="text-xl font-bold text-slate-900">Forgot Password</h2>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 4250153731267 or user@email.com"
+                    value={forgotIdentifier}
+                    onChange={e => setForgotIdentifier(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-xl bg-amber-500 py-2 text-sm font-bold text-white hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {loading ? "Checking Database..." : "Show My Password (پاسورڈ دکھائیں)"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+          {/* Right side: Illustration / Placeholder */}
+          <div className="hidden md:block w-1/2 max-w-lg mx-4">
+            <div className="h-96 bg-gradient-to-r from-teal-200 to-sky-300 rounded-3xl shadow-xl" />
+          </div>
+        </div>
+      ) : (
+        /* LOGGED IN PATIENT DASHBOARD */
+        <div className="space-y-6">
+          {/* Patient Profile Card */}
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 p-6 text-white shadow-xl">
+            <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full bg-blue-500/20 blur-2xl pointer-events-none" />
+            <div className="relative flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-sky-300 bg-white/10 px-3 py-1 rounded-full">
+                  Registered Patient Profile
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-white mt-2">
+                  {profile?.full_name}
+                </h2>
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-300 mt-2">
+                  <span><strong className="text-white">CNIC:</strong> {profile?.cnic || "—"}</span>
+                  <span><strong className="text-white">Age:</strong> {profile?.age_years} Years</span>
+                  <span><strong className="text-white">Email:</strong> {profile?.email || "—"}</span>
+                  <span><strong className="text-white">Phone:</strong> {profile?.phone_number || "—"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Remaining dashboard sections stay unchanged */}
+        </div>
+      )}
+        
+        {/* Auth Container with Tabs */}
+        {clinic && !instantEmergencyResult && (
+          <div className="mx-auto max-w-md mb-4 rounded-2xl border-2 border-red-600 bg-gradient-to-r from-red-600 to-rose-600 p-4 text-white shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-extrabold">
+                  🚨 Accident / Critical Emergency?
+                </h2>
+                <p className="text-[11px] text-red-100 mt-0.5">
+                  بغیر نام، شناختی کارڈ یا فارم کے فوری ایمرجنسی RED کارڈ حاصل کریں۔
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstantEmergency}
+                disabled={emergencyLoading}
+                className="shrink-0 rounded-xl bg-white px-3.5 py-2.5 text-xs font-black text-red-700 shadow hover:bg-red-50 active:scale-95 transition disabled:opacity-60"
+              >
+                {emergencyLoading ? "Issuing..." : "🚨 1-Click RED Card"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {instantEmergencyResult && (
+          <div className="mx-auto max-w-md mb-5 rounded-3xl border-2 border-red-600 bg-red-50 p-6 text-center shadow-lg space-y-3">
+            <p className="text-xs font-extrabold uppercase tracking-wider text-red-700">
+              {instantEmergencyResult.ticket.triage_card_title}
+            </p>
+            <p className="text-5xl font-black text-red-700">
+              {instantEmergencyResult.ticket.token_code}
+            </p>
+            <p className="text-xs text-red-900 font-medium">
+              {instantEmergencyResult.ticket.triage_card_message}
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Link
+                href={`/track/${encodeURIComponent(instantEmergencyResult.tracking_token)}`}
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+              >
+                Open Live Emergency Tracker →
+              </Link>
+              <button
+                type="button"
+                onClick={() => setInstantEmergencyResult(null)}
+                className="rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="mx-auto max-w-md glass-card rounded-3xl overflow-hidden my-4 shadow-xl">
           {/* Tabs */}
-          <div className="flex border-b border-slate-100 bg-slate-50 text-xs font-bold">
+          <div className="flex p-1.5 gap-1 bg-slate-100/90 text-xs font-bold">
             <button
               onClick={() => {
                 setAuthMode("login");
@@ -646,38 +1187,40 @@ export default function PatientPortalPage() {
             )}
           </div>
         </div>
+        </>
       ) : (
         /* LOGGED IN PATIENT DASHBOARD */
         <div className="space-y-6">
           {/* Patient Profile Card */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 p-6 text-white shadow-xl">
+            <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full bg-blue-500/20 blur-2xl pointer-events-none" />
+            <div className="relative flex flex-wrap items-center justify-between gap-4">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-sky-300 bg-white/10 px-3 py-1 rounded-full">
                   Registered Patient Profile
                 </span>
-                <h2 className="text-2xl font-black text-slate-900 mt-1">
+                <h2 className="text-2xl sm:text-3xl font-black text-white mt-2">
                   {profile?.full_name}
                 </h2>
-                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600 mt-1.5">
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-300 mt-2">
                   <span>
-                    <strong className="text-slate-800">CNIC:</strong> {profile?.cnic || "—"}
+                    <strong className="text-white">CNIC:</strong> {profile?.cnic || "—"}
                   </span>
                   <span>
-                    <strong className="text-slate-800">Age:</strong> {profile?.age_years} Years
+                    <strong className="text-white">Age:</strong> {profile?.age_years} Years
                   </span>
                   <span>
-                    <strong className="text-slate-800">Email:</strong> {profile?.email || "—"}
+                    <strong className="text-white">Email:</strong> {profile?.email || "—"}
                   </span>
                   <span>
-                    <strong className="text-slate-800">Phone:</strong> {profile?.phone_number || "—"}
+                    <strong className="text-white">Phone:</strong> {profile?.phone_number || "—"}
                   </span>
                 </div>
               </div>
 
               <button
                 onClick={() => setDashboardTab("book")}
-                className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 shadow transition flex items-center gap-1.5"
+                className="rounded-2xl bg-gradient-to-r from-sky-400 to-blue-500 px-5 py-3 text-xs font-black text-slate-950 hover:from-sky-300 hover:to-blue-400 shadow-lg transition flex items-center gap-2 cursor-pointer"
               >
                 <span>🎟️</span>
                 <span>Get New Queue Token (نیا ٹوکن حاصل کریں)</span>
@@ -1068,19 +1611,123 @@ export default function PatientPortalPage() {
                 </div>
 
                 <form onSubmit={handleBookNewToken} className="space-y-4 pt-2">
-                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl text-xs text-slate-600">
-                    <div>
-                      <strong>Patient:</strong> {profile?.full_name}
+                  {/* Selector: Self vs Other Patient */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-800 mb-2">
+                      یہ ٹوکن کس کے لیے بنانا چاہتے ہیں؟ (Select Patient)
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setBookTarget("self")}
+                        className={`p-3 rounded-xl border text-left font-bold transition flex items-center gap-2.5 ${
+                          bookTarget === "self"
+                            ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-500 shadow-xs"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="text-xl">👤</span>
+                        <div>
+                          <div>میرے اپنے لیے (Myself)</div>
+                          <div className="text-[11px] font-mono text-slate-500">{profile?.full_name} • {profile?.cnic}</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBookTarget("other")}
+                        className={`p-3 rounded-xl border text-left font-bold transition flex items-center gap-2.5 ${
+                          bookTarget === "other"
+                            ? "border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-500 shadow-xs"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className="text-xl">👥</span>
+                        <div>
+                          <div>کسی دوسرے مریض کے لیے</div>
+                          <div className="text-[11px] font-normal text-slate-500">نئی فیملی / الگ مریض کا CNIC</div>
+                        </div>
+                      </button>
                     </div>
-                    <div>
-                      <strong>CNIC:</strong> {profile?.cnic}
-                    </div>
-                    <div>
-                      <strong>Age:</strong> {profile?.age_years} Y
-                    </div>
-                    <div>
-                      <strong>Phone:</strong> {profile?.phone_number || "—"}
-                    </div>
+
+                    {bookTarget === "self" ? (
+                      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2.5 rounded-xl border border-slate-200 text-xs text-slate-600">
+                        <div>
+                          <strong>Patient:</strong> {profile?.full_name}
+                        </div>
+                        <div>
+                          <strong>CNIC:</strong> {profile?.cnic}
+                        </div>
+                        <div>
+                          <strong>Age:</strong> {profile?.age_years} Y
+                        </div>
+                        <div>
+                          <strong>Phone:</strong> {profile?.phone_number || "—"}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 pt-3 border-t border-slate-200 space-y-2.5 animate-in fade-in">
+                        <div className="text-[11px] font-bold text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                          💡 اس مریض کا اپنا CNIC نمبر درج کریں۔ یہ ٹوکن اور ڈاکٹر کا نسخہ صرف اسی مریض کے اپنے اکاؤنٹ میں نظر آئے گا، آپ کے پاس مکس نہیں ہوگا۔
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Patient Full Name / مریض کا نام *
+                            </label>
+                            <input
+                              type="text"
+                              required={bookTarget === "other"}
+                              placeholder="e.g. Ali Khan"
+                              value={otherName}
+                              onChange={(e) => setOtherName(e.target.value)}
+                              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Patient CNIC / شناختی کارڈ *
+                            </label>
+                            <input
+                              type="text"
+                              required={bookTarget === "other"}
+                              placeholder="e.g. 4250153731268"
+                              value={otherCnic}
+                              onChange={(e) => setOtherCnic(e.target.value)}
+                              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 font-mono bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Age (عمر) *
+                            </label>
+                            <input
+                              type="number"
+                              required={bookTarget === "other"}
+                              placeholder="e.g. 30"
+                              value={otherAge}
+                              onChange={(e) => setOtherAge(e.target.value)}
+                              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Phone / فون نمبر
+                            </label>
+                            <input
+                              type="tel"
+                              placeholder="03001234567"
+                              value={otherPhone}
+                              onChange={(e) => setOtherPhone(e.target.value)}
+                              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs text-slate-900 bg-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1112,6 +1759,31 @@ export default function PatientPortalPage() {
                       onChange={(e) => setBookSymptoms(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    {bookAiPreview && (
+                      <div
+                        className={`mt-2 rounded-xl border p-2.5 text-xs ${
+                          bookAiPreview.urgency_tier === "RED"
+                            ? "border-red-400 bg-red-50 text-red-900"
+                            : bookAiPreview.urgency_tier === "YELLOW"
+                            ? "border-amber-400 bg-amber-50 text-amber-900"
+                            : "border-emerald-300 bg-emerald-50 text-emerald-900"
+                        }`}
+                      >
+                        <div className="font-bold flex items-center justify-between gap-2">
+                          <span>🤖 AI Detection: {bookAiPreview.card_title}</span>
+                          {bookAiPreview.recommended_department && (
+                            <span className="text-[10px] font-semibold opacity-80">
+                              {bookAiPreview.recommended_department}
+                            </span>
+                          )}
+                        </div>
+                        {bookAiPreview.red_flag_reasons?.length > 0 && (
+                          <div className="mt-1 text-[11px]">
+                            • {bookAiPreview.red_flag_reasons[0]}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -1192,7 +1864,7 @@ export default function PatientPortalPage() {
             </div>
           )}
         </div>
-      )}
+      )
 
       {/* DIGITAL PRESCRIPTION MODAL (PDF / PRINT VIEW) */}
       {viewingPrescription && (

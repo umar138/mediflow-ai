@@ -12,10 +12,11 @@ from app.models.entities import (
 )
 from app.schemas.contracts import (
     PublicClinicOut, DepartmentOut, IntakeCreateRequest, IntakeCreateResponse,
-    CreatedTicketSummary, PublicTicketTrackOut, PublicDisplayOut
+    CreatedTicketSummary, PublicTicketTrackOut, PublicDisplayOut,
+    EmergencyIntakeRequest, TriagePreviewRequest, TriagePreviewResponse
 )
 from app.schemas.triage import TriageInput
-from app.services.triage import run_hybrid_triage, more_severe
+from app.services.triage import run_hybrid_triage, more_severe, _evaluate_deterministic_rules, _infer_department
 from app.services.queue import get_sorted_waiting_tickets, compute_priority_score
 from app.services.eta import calculate_eta_range, get_active_delay_minutes
 from app.services.ws_manager import ws_manager
@@ -214,6 +215,165 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
     )
 
 
+@router.post("/clinics/{clinic_id}/emergency-intake", response_model=IntakeCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_emergency_intake(
+    clinic_id: uuid.UUID,
+    req: Optional[EmergencyIntakeRequest] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Zero-form One-Click Emergency RED Card endpoint for accidents / critical cases.
+    Requires no name, age, CNIC, or symptoms upfront; staff can manually fill details later.
+    """
+    clinic = db.query(Clinic).filter(Clinic.clinic_id == clinic_id, Clinic.is_active.is_(True)).first()
+    if not clinic:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    depts = db.query(Department).filter(
+        Department.clinic_id == clinic_id,
+        Department.is_active.is_(True),
+    ).all()
+    if not depts:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No active department found for clinic")
+
+    # Prefer Emergency / Trauma department if present, else first active department
+    dept = next(
+        (d for d in depts if "emerg" in d.name.lower() or d.code.upper() in {"EMER", "ER", "TRAUMA"}),
+        depts[0],
+    )
+
+    now = datetime.now(timezone.utc)
+    urgency_enum = UrgencyTier.RED
+    token_code = _next_token_code(db, clinic_id, urgency_enum)
+    score, _ = compute_priority_score(urgency_enum, now, now=now)
+    lang = req.preferred_language if req else "en"
+
+    patient = Patient(
+        clinic_id=clinic_id,
+        display_name=f"Emergency Case ({token_code})",
+        cnic=None,
+        phone_number=None,
+        gender="other",
+        age_years=30,
+        preferred_language=PreferredLanguage(lang),
+    )
+    db.add(patient)
+    db.flush()
+
+    ticket = QueueTicket(
+        clinic_id=clinic_id,
+        department_id=dept.department_id,
+        patient_id=patient.patient_id,
+        token_code=token_code,
+        status=TicketStatus.WAITING,
+        urgency=urgency_enum,
+        priority_score=score,
+        channel=IntakeChannel.QR,
+        checked_in_at=now,
+    )
+    db.add(ticket)
+    db.flush()
+
+    note_text = (req.note.strip() if req and req.note else None) or (
+        "CRITICAL EMERGENCY — One-Click Emergency RED Card (Accident / Serious Case). "
+        "Patient details to be collected manually by staff."
+    )
+    db.add(IntakeRecord(
+        ticket_id=ticket.ticket_id,
+        symptom_text=note_text,
+        input_mode=InputMode.TEXT,
+        patient_reported_duration="Immediate / Sudden",
+    ))
+
+    red_reason = "One-Click Emergency RED Card triggered (Accident / Critical Case — Zero-Form Immediate Escalation)."
+    assessment = TriageAssessment(
+        ticket_id=ticket.ticket_id,
+        clinic_id=clinic_id,
+        source=TriageSource.RULES,
+        urgency=urgency_enum,
+        normalized_symptoms=["emergency", "critical", "manual_details_pending"],
+        red_flag_reasons=[red_reason],
+        uncertainties=["Patient identity and full clinical details pending manual staff entry."],
+        recommended_department=dept.name,
+        doctor_pre_brief=f"🚨 IMMEDIATE EMERGENCY RED CARD ({token_code}) — Patient arrived via One-Click Emergency. Collect details manually.",
+        model_provider="one-click-emergency",
+        model_name="emergency-bypass-v1",
+        prompt_version="emergency-v1",
+        rule_set_version="emergency-v1",
+        input_hash=f"emer-{ticket.ticket_id}",
+    )
+    db.add(assessment)
+
+    tracking_str = f"trk_{secrets.token_urlsafe(16)}"
+    db.add(PatientTrackingToken(ticket_id=ticket.ticket_id, tracking_token=tracking_str))
+    db.add(AuditLog(
+        clinic_id=clinic_id,
+        entity_type="queue_ticket",
+        entity_id=str(ticket.ticket_id),
+        action="EMERGENCY_ONE_CLICK_CREATED",
+        details={"urgency": "RED", "token_code": token_code},
+    ))
+    db.commit()
+
+    sorted_waiting = get_sorted_waiting_tickets(db, clinic_id, dept.department_id)
+    ahead = 0
+    for idx, (t_item, _, _) in enumerate(sorted_waiting):
+        if t_item.ticket_id == ticket.ticket_id:
+            ahead = idx
+            break
+
+    eta_min, eta_max, eff_pos = calculate_eta_range(db, clinic_id, ahead_count=ahead, department_id=dept.department_id)
+    ticket.estimated_wait_minutes = (eta_min + eta_max) // 2
+    db.commit()
+
+    await ws_manager.broadcast_staff(str(clinic_id), {"type": "queue.updated", "clinic_id": str(clinic_id)})
+    await ws_manager.broadcast_all_displays_for_clinic(str(clinic_id), {"type": "display.updated", "clinic_id": str(clinic_id)})
+
+    return IntakeCreateResponse(
+        ticket=CreatedTicketSummary(
+            ticket_id=ticket.ticket_id,
+            token_code=ticket.token_code,
+            status=ticket.status.value,
+            urgency=ticket.urgency.value,
+            queue_position=eff_pos,
+            eta_min_minutes=eta_min,
+            eta_max_minutes=eta_max,
+            triage_card_type="RED",
+            triage_card_title="🚨 EMERGENCY RED CARD — IMMEDIATE ATTENTION",
+            triage_card_message="Emergency token issued immediately. Proceed straight to Emergency / Triage desk; staff will record details manually.",
+        ),
+        tracking_token=tracking_str,
+        safety_message=SAFETY_MSG,
+    )
+
+
+@router.post("/triage-preview", response_model=TriagePreviewResponse)
+def preview_ai_triage(req: TriagePreviewRequest):
+    """Instant smart AI triage preview as patient types symptoms."""
+    t_input = TriageInput(
+        display_name="Preview",
+        age_years=req.age_years,
+        preferred_language=req.preferred_language,
+        symptom_text=req.symptom_text,
+        input_mode="TEXT",
+    )
+    urgency, reasons, _ = _evaluate_deterministic_rules(t_input)
+    rec_dept = _infer_department(req.symptom_text, None)
+    if urgency == "RED":
+        title = "🚨 RED Card — Critical / Emergency Detected"
+    elif urgency == "YELLOW":
+        title = "⚠️ YELLOW Card — Urgent / Priority Care"
+    else:
+        title = "✅ GREEN Card — Routine OPD Consultation"
+
+    return TriagePreviewResponse(
+        urgency_tier=urgency,
+        card_title=title,
+        red_flag_reasons=reasons,
+        recommended_department=rec_dept,
+    )
+
+
 @router.get("/tickets/{tracking_token}", response_model=PublicTicketTrackOut)
 def track_ticket(tracking_token: str, db: Session = Depends(get_db)):
     tok_row = db.query(PatientTrackingToken).filter(PatientTrackingToken.tracking_token == tracking_token).first()
@@ -311,3 +471,62 @@ def get_public_display(display_token: str, db: Session = Depends(get_db)):
         public_notice=clinic.public_notice,
         updated_at=datetime.now(timezone.utc),
     )
+
+
+@router.get("/clinics/{clinic_id}/live-summary")
+def get_public_live_summary(clinic_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Sanitized real-time queue & consultation summary for the public Hub display."""
+    clinic = db.query(Clinic).filter(Clinic.clinic_id == clinic_id, Clinic.is_active.is_(True)).first()
+    if not clinic:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
+
+    depts = {
+        d.department_id: d.name
+        for d in db.query(Department).filter(Department.clinic_id == clinic_id).all()
+    }
+
+    active_tickets = db.query(QueueTicket).filter(
+        QueueTicket.clinic_id == clinic_id,
+        QueueTicket.status.in_([TicketStatus.IN_CONSULTATION, TicketStatus.CALLED]),
+    ).order_by(QueueTicket.updated_at.desc()).all()
+
+    now_serving = [
+        {
+            "token_code": t.token_code,
+            "status": t.status.value,
+            "urgency": t.urgency.value,
+            "room_number": t.room_number or "Room 101",
+            "department_name": depts.get(t.department_id, "General"),
+        }
+        for t in active_tickets
+    ]
+
+    waiting_sorted = get_sorted_waiting_tickets(db, clinic_id)
+    queue_items = [
+        {
+            "token_code": t.token_code,
+            "urgency": t.urgency.value,
+            "department_name": depts.get(t.department_id, "General"),
+            "wait_minutes": wait_mins,
+        }
+        for t, _, wait_mins in waiting_sorted[:5]
+    ]
+
+    completed_count = db.query(QueueTicket).filter(
+        QueueTicket.clinic_id == clinic_id,
+        QueueTicket.status == TicketStatus.COMPLETED,
+    ).count()
+
+    delay_mins = get_active_delay_minutes(db, clinic_id)
+    avg_wait = max(5, 12 + delay_mins)
+
+    return {
+        "clinic_name": clinic.name,
+        "now_serving": now_serving,
+        "queue": queue_items,
+        "waiting_count": len(waiting_sorted),
+        "in_consultation_count": len(active_tickets),
+        "completed_count": completed_count,
+        "avg_wait_minutes": avg_wait,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }

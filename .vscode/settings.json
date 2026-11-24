@@ -2,5 +2,6 @@
     "python.terminal.useEnvFile": true,
     "python.analysis.extraPaths": [
         "./backend"
-    ]
+    ],
+    "css.lint.unknownAtRules": "ignore"
 }

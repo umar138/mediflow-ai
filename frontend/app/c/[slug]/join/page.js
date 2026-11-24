@@ -22,6 +22,8 @@ export default function PatientJoinPage({ params }) {
   const [cardType, setCardType] = useState("AUTO");
   const [voiceNote, setVoiceNote] = useState("");
   const [createdResult, setCreatedResult] = useState(null);
+  const [emergencyLoading, setEmergencyLoading] = useState(false);
+  const [aiPreview, setAiPreview] = useState(null);
 
   const recognitionRef = useRef(null);
   const isRtl = preferredLanguage === "ur";
@@ -60,6 +62,41 @@ export default function PatientJoinPage({ params }) {
       active = false;
     };
   }, [slug]);
+
+  useEffect(() => {
+    const text = symptomText.trim();
+    if (text.length < 3) {
+      setAiPreview(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api
+        .triagePreview({
+          symptom_text: text,
+          age_years: ageYears ? Number(ageYears) : 30,
+          preferred_language: preferredLanguage,
+        })
+        .then((res) => setAiPreview(res))
+        .catch(() => {});
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [symptomText, ageYears, preferredLanguage]);
+
+  async function handleInstantEmergency() {
+    if (!clinic) return;
+    setErrorMsg("");
+    setEmergencyLoading(true);
+    try {
+      const res = await api.createEmergencyIntake(clinic.clinic_id, {
+        preferred_language: preferredLanguage,
+      });
+      setCreatedResult(res);
+    } catch (err) {
+      setErrorMsg(err.message || "Failed to generate emergency RED card.");
+    } finally {
+      setEmergencyLoading(false);
+    }
+  }
 
   function handleVoiceInput() {
     setVoiceNote("");
@@ -165,6 +202,32 @@ export default function PatientJoinPage({ params }) {
         )}
 
         {clinic && !createdResult && (
+          <div className="mt-5 rounded-2xl border-2 border-red-600 bg-gradient-to-r from-red-600 to-rose-600 p-4 text-white shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-block w-3 h-3 rounded-full bg-white animate-ping"></span>
+                  <h2 className="text-base font-extrabold tracking-tight">
+                    🚨 Accident / Critical Emergency?
+                  </h2>
+                </div>
+                <p className="mt-1 text-xs text-red-100">
+                  کچھ لکھنے یا فارم بھرنے کی ضرورت نہیں! فوری ایمرجنسی ریڈ کارڈ (RED Card) حاصل کریں، باقی تفصیلات عملہ خود لے گا۔
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleInstantEmergency}
+                disabled={emergencyLoading}
+                className="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-black text-red-700 shadow-md hover:bg-red-50 active:scale-95 transition disabled:opacity-60"
+              >
+                {emergencyLoading ? "Generating..." : "🚨 1-Click Emergency RED Card"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {clinic && !createdResult && (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-900">{clinic.name}</h1>
@@ -260,6 +323,31 @@ export default function PatientJoinPage({ params }) {
               />
               {voiceNote && (
                 <p className="mt-1 text-xs text-slate-600">{voiceNote}</p>
+              )}
+              {aiPreview && (
+                <div
+                  className={`mt-2 rounded-xl border p-2.5 text-xs ${
+                    aiPreview.urgency_tier === "RED"
+                      ? "border-red-400 bg-red-50 text-red-900"
+                      : aiPreview.urgency_tier === "YELLOW"
+                      ? "border-amber-400 bg-amber-50 text-amber-900"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-900"
+                  }`}
+                >
+                  <div className="font-bold flex items-center justify-between">
+                    <span>🤖 Smart AI Detection: {aiPreview.card_title}</span>
+                    {aiPreview.recommended_department && (
+                      <span className="text-[11px] font-semibold opacity-80">
+                        Dept: {aiPreview.recommended_department}
+                      </span>
+                    )}
+                  </div>
+                  {aiPreview.red_flag_reasons?.length > 0 && (
+                    <div className="mt-1 text-[11px] font-medium">
+                      • {aiPreview.red_flag_reasons[0]}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -372,13 +460,34 @@ export default function PatientJoinPage({ params }) {
         )}
 
         {createdResult && (
-          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-              Token Issued
+          <div
+            className={`mt-6 rounded-2xl border-2 p-6 text-center space-y-3 ${
+              createdResult.ticket.urgency === "RED"
+                ? "border-red-500 bg-red-50"
+                : createdResult.ticket.urgency === "YELLOW"
+                ? "border-amber-400 bg-amber-50"
+                : "border-emerald-300 bg-emerald-50"
+            }`}
+          >
+            <p
+              className={`text-xs font-extrabold uppercase tracking-wider ${
+                createdResult.ticket.urgency === "RED"
+                  ? "text-red-700"
+                  : createdResult.ticket.urgency === "YELLOW"
+                  ? "text-amber-700"
+                  : "text-emerald-700"
+              }`}
+            >
+              {createdResult.ticket.triage_card_title || "Token Issued"}
             </p>
             <p className="text-4xl font-extrabold text-slate-900">
               {createdResult.ticket.token_code}
             </p>
+            {createdResult.ticket.triage_card_message && (
+              <p className="text-xs font-medium text-slate-700">
+                {createdResult.ticket.triage_card_message}
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-2 pt-2 text-xs">
               <div className="rounded-lg bg-white p-2.5 border border-emerald-100">
                 <div className="text-slate-500">Status</div>
