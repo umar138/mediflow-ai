@@ -851,7 +851,7 @@ export default function PatientPortalPage() {
           </div>
           {/* Remaining dashboard sections stay unchanged */}
         </div>
-      )}
+      )
         
         {/* Auth Container with Tabs */}
         {clinic && !instantEmergencyResult && (
@@ -1187,8 +1187,7 @@ export default function PatientPortalPage() {
             )}
           </div>
         </div>
-        </>
-      ) : (
+        
         /* LOGGED IN PATIENT DASHBOARD */
         <div className="space-y-6">
           {/* Patient Profile Card */}
