@@ -1,4 +1,3 @@
-import uuid
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -7,8 +6,8 @@ from app.models.entities import Consultation, QueueTicket, ClinicDelay, TicketSt
 
 def get_avg_consult_minutes(
     db: Session,
-    doctor_id: Optional[uuid.UUID] = None,
-    department_id: Optional[uuid.UUID] = None,
+    doctor_id: Optional[int] = None,
+    department_id: Optional[int] = None,
 ) -> float:
     """
     Mean duration_seconds of last 10 completed consultations for assigned doctor/department.
@@ -39,8 +38,8 @@ def get_avg_consult_minutes(
 
 def get_active_delay_minutes(
     db: Session,
-    clinic_id: uuid.UUID,
-    department_id: Optional[uuid.UUID] = None,
+    clinic_id: int,
+    department_id: Optional[int] = None,
 ) -> int:
     q = db.query(ClinicDelay).filter(
         ClinicDelay.clinic_id == clinic_id,
@@ -55,10 +54,10 @@ def get_active_delay_minutes(
 
 def calculate_eta_range(
     db: Session,
-    clinic_id: uuid.UUID,
+    clinic_id: int,
     ahead_count: int,
-    doctor_id: Optional[uuid.UUID] = None,
-    department_id: Optional[uuid.UUID] = None,
+    doctor_id: Optional[int] = None,
+    department_id: Optional[int] = None,
 ) -> Tuple[int, int, int]:
     """
     effective_position = count of eligible tickets ahead + 1.

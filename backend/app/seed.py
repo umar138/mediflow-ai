@@ -1,5 +1,4 @@
 import sys
-import uuid
 import hashlib
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -37,7 +36,6 @@ def seed_database(reset: bool = False):
 
         # 1. Clinic
         clinic = Clinic(
-            clinic_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
             slug="islamabad-care-clinic",
             name="Islamabad Community Care Clinic (Demo)",
             public_notice="Emergency symptoms? Alert reception immediately. Doctor break delay active (+10 mins).",
@@ -47,13 +45,11 @@ def seed_database(reset: bool = False):
 
         # 2. Departments (2 departments)
         dept_gp = Department(
-            department_id=uuid.UUID("22222222-2222-2222-2222-222222222201"),
             clinic_id=clinic.clinic_id,
             code="GP",
             name="General Medicine & Acute Care",
         )
         dept_peds = Department(
-            department_id=uuid.UUID("22222222-2222-2222-2222-222222222202"),
             clinic_id=clinic.clinic_id,
             code="PEDS",
             name="Pediatrics & Family Health",
@@ -73,7 +69,6 @@ def seed_database(reset: bool = False):
         pw_hash = get_password_hash("DemoPass123!")
         for idx, (email, name, role, dept_id) in enumerate(staff_specs, start=1):
             u = StaffUser(
-                user_id=uuid.UUID(f"33333333-3333-3333-3333-33333333330{idx}"),
                 email=email,
                 full_name=name,
                 password_hash=pw_hash,

@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -23,8 +22,8 @@ def compute_priority_score(urgency: UrgencyTier, checked_in_at: datetime, now: O
 
 def get_sorted_waiting_tickets(
     db: Session,
-    clinic_id: uuid.UUID,
-    department_id: Optional[uuid.UUID] = None,
+    clinic_id: int,
+    department_id: Optional[int] = None,
 ) -> List[tuple[QueueTicket, int, int]]:
     """
     Returns list of (ticket, priority_score, wait_minutes) for WAITING tickets only.
@@ -45,5 +44,5 @@ def get_sorted_waiting_tickets(
         score, wait_mins = compute_priority_score(t.urgency, t.checked_in_at, now=now)
         enriched.append((t, score, wait_mins))
 
-    enriched.sort(key=lambda item: (-item[1], item[0].checked_in_at, str(item[0].ticket_id)))
+    enriched.sort(key=lambda item: (-item[1], item[0].checked_in_at, item[0].ticket_id))
     return enriched

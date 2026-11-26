@@ -22,13 +22,19 @@ def get_current_staff_context(
     if not payload or "sub" not in payload or "clinic_id" not in payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
-    user = db.query(StaffUser).filter(StaffUser.user_id == payload["sub"], StaffUser.is_active.is_(True)).first()
+    try:
+        user_id = int(payload["sub"])
+        clinic_id = int(payload["clinic_id"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
+
+    user = db.query(StaffUser).filter(StaffUser.user_id == user_id, StaffUser.is_active.is_(True)).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Staff user not found")
 
     membership = (
         db.query(ClinicMembership)
-        .filter(ClinicMembership.user_id == user.user_id, ClinicMembership.clinic_id == payload["clinic_id"])
+        .filter(ClinicMembership.user_id == user.user_id, ClinicMembership.clinic_id == clinic_id)
         .first()
     )
     if not membership:

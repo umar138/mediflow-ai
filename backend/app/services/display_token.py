@@ -1,9 +1,9 @@
-import uuid
+import secrets
 from sqlalchemy.orm import Session
 from app.models.entities import DisplayAccessToken, Clinic
 
 
-def get_or_create_display_token(db: Session, clinic_id: uuid.UUID) -> str:
+def get_or_create_display_token(db: Session, clinic_id: int) -> str:
     """Return an existing active display token for the clinic or create a new one.
 
     The function is idempotent – if a token already exists it is returned unchanged.
@@ -21,7 +21,7 @@ def get_or_create_display_token(db: Session, clinic_id: uuid.UUID) -> str:
 
     new_token = DisplayAccessToken(
         clinic_id=clinic_id,
-        display_token=uuid.uuid4().hex,  # 32‑char random token
+        display_token=secrets.token_hex(16),  # 32‑char random token
         label=f"Display for clinic {clinic_id}",
         is_active=True,
     )

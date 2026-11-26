@@ -1,4 +1,3 @@
-import uuid
 import secrets
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -38,7 +37,7 @@ VALID_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
 }
 
 
-def _assert_same_clinic(ctx: dict, clinic_id: uuid.UUID):
+def _assert_same_clinic(ctx: dict, clinic_id: int):
     if ctx["clinic_id"] != clinic_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden for this clinic")
 
@@ -227,7 +226,7 @@ async def create_walkin_ticket(
 
 @router.post("/tickets/{ticket_id}/vitals", response_model=QueueTicketItemOut)
 async def record_vitals(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     req: VitalsCreateRequest,
     ctx: dict = Depends(require_roles({UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.NURSE, UserRole.DOCTOR})),
     db: Session = Depends(get_db),
@@ -313,8 +312,8 @@ async def record_vitals(
 
 @router.get("/clinics/{clinic_id}/queue", response_model=QueueResponseOut)
 def get_clinic_queue(
-    clinic_id: uuid.UUID,
-    department_id: Optional[uuid.UUID] = Query(default=None),
+    clinic_id: int,
+    department_id: Optional[int] = Query(default=None),
     ctx: dict = Depends(get_current_staff_context),
     db: Session = Depends(get_db),
 ):
@@ -349,7 +348,7 @@ def get_clinic_queue(
 
 @router.get("/tickets/{ticket_id}", response_model=QueueTicketItemOut)
 def get_ticket_detail(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     ctx: dict = Depends(get_current_staff_context),
     db: Session = Depends(get_db),
 ):
@@ -362,7 +361,7 @@ def get_ticket_detail(
 
 @router.patch("/tickets/{ticket_id}/patient-info", response_model=QueueTicketItemOut)
 async def update_ticket_patient_info(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     req: ManualPatientInfoUpdateRequest,
     ctx: dict = Depends(require_roles({UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.NURSE, UserRole.DOCTOR})),
     db: Session = Depends(get_db),
@@ -559,7 +558,7 @@ def _transition_ticket(
 
 @router.post("/tickets/{ticket_id}/call", response_model=QueueTicketItemOut)
 async def call_ticket(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     req: Optional[TicketActionRequest] = None,
     ctx: dict = Depends(require_roles({UserRole.DOCTOR, UserRole.NURSE, UserRole.RECEPTIONIST, UserRole.ADMIN})),
     db: Session = Depends(get_db),
@@ -589,7 +588,7 @@ async def call_ticket(
 
 @router.post("/tickets/{ticket_id}/start", response_model=QueueTicketItemOut)
 async def start_ticket(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     req: Optional[TicketActionRequest] = None,
     ctx: dict = Depends(require_roles({UserRole.DOCTOR, UserRole.NURSE, UserRole.ADMIN})),
     db: Session = Depends(get_db),
@@ -618,7 +617,7 @@ async def start_ticket(
 
 @router.post("/tickets/{ticket_id}/complete", response_model=QueueTicketItemOut)
 async def complete_ticket(
-    ticket_id: uuid.UUID,
+    ticket_id: int,
     req: TicketActionRequest,
     ctx: dict = Depends(require_roles({UserRole.DOCTOR, UserRole.ADMIN})),
     db: Session = Depends(get_db),
@@ -646,7 +645,7 @@ async def complete_ticket(
 
 @router.post("/clinics/{clinic_id}/delay")
 async def update_clinic_delay(
-    clinic_id: uuid.UUID,
+    clinic_id: int,
     req: DelayCreateRequest,
     ctx: dict = Depends(require_roles({UserRole.ADMIN, UserRole.RECEPTIONIST, UserRole.NURSE, UserRole.DOCTOR})),
     db: Session = Depends(get_db),

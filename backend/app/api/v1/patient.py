@@ -31,7 +31,12 @@ def get_current_patient(
     if not payload or "sub" not in payload or payload.get("role") != "PATIENT":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired patient token")
 
-    patient = db.query(Patient).filter(Patient.patient_id == payload["sub"]).first()
+    try:
+        patient_id = int(payload["sub"])
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid patient token")
+
+    patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
     if not patient:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Patient profile not found")
     return patient

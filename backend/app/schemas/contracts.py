@@ -1,18 +1,17 @@
 from datetime import datetime
 from typing import List, Optional, Literal
-from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 
 class DepartmentOut(BaseModel):
-    department_id: UUID
-    clinic_id: UUID
+    department_id: int
+    clinic_id: int
     code: str
     name: str
 
 
 class PublicClinicOut(BaseModel):
-    clinic_id: UUID
+    clinic_id: int
     slug: str
     name: str
     public_notice: str
@@ -29,13 +28,13 @@ class IntakeCreateRequest(BaseModel):
     preferred_language: Literal["en", "ur", "roman_ur"] = "en"
     symptom_text: str = Field(..., min_length=1, max_length=2000)
     input_mode: Literal["TEXT", "VOICE"] = "TEXT"
-    department_id: UUID
+    department_id: int
     patient_reported_duration: Optional[str] = Field(default=None, max_length=100)
     card_type: Optional[str] = None
 
 
 class CreatedTicketSummary(BaseModel):
-    ticket_id: UUID
+    ticket_id: int
     token_code: str
     status: str
     urgency: str
@@ -79,11 +78,11 @@ class StaffLoginRequest(BaseModel):
 class StaffLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user_id: UUID
+    user_id: int
     full_name: str
     role: str
-    clinic_id: UUID
-    department_id: Optional[UUID] = None
+    clinic_id: int
+    department_id: Optional[int] = None
     degrees: Optional[str] = None
     specialization: Optional[str] = None
     room_number: Optional[str] = None
@@ -91,8 +90,8 @@ class StaffLoginResponse(BaseModel):
 
 
 class WalkInTicketCreateRequest(BaseModel):
-    clinic_id: UUID
-    department_id: UUID
+    clinic_id: int
+    department_id: int
     display_name: str = Field(..., min_length=1, max_length=150)
     cnic: Optional[str] = None
     phone_number: Optional[str] = None
@@ -122,10 +121,10 @@ class VitalsSnapshot(BaseModel):
 
 
 class QueueTicketItemOut(BaseModel):
-    ticket_id: UUID
-    patient_id: UUID
-    doctor_id: Optional[UUID] = None
-    department_id: UUID
+    ticket_id: int
+    patient_id: int
+    doctor_id: Optional[int] = None
+    department_id: int
     token_code: str
     status: str
     urgency: str
@@ -153,7 +152,7 @@ class QueueResponseOut(BaseModel):
 
 
 class TicketActionRequest(BaseModel):
-    doctor_id: Optional[UUID] = None
+    doctor_id: Optional[int] = None
     clinician_note: Optional[str] = None
     room_number: Optional[str] = None
     diagnosis: Optional[str] = None
@@ -164,7 +163,7 @@ class TicketActionRequest(BaseModel):
 
 
 class DelayCreateRequest(BaseModel):
-    department_id: Optional[UUID] = None
+    department_id: Optional[int] = None
     delay_minutes: int = Field(..., ge=0, le=240)
     reason: str = Field(..., min_length=1, max_length=255)
     is_active: bool = True
@@ -202,13 +201,13 @@ class PatientLoginRequest(BaseModel):
 class PatientAuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    patient_id: UUID
+    patient_id: int
     full_name: str
     cnic: Optional[str] = None
     phone_number: Optional[str] = None
     email: Optional[str] = None
     age_years: int
-    clinic_id: UUID
+    clinic_id: int
     clinic_slug: str
 
 
@@ -225,7 +224,7 @@ class ForgotPasswordResponse(BaseModel):
 
 
 class PatientHistoryItem(BaseModel):
-    ticket_id: UUID
+    ticket_id: int
     token_code: str
     tracking_token: Optional[str] = None
     visit_date: datetime
@@ -252,7 +251,7 @@ class PatientHistoryItem(BaseModel):
 
 
 class PatientHistoryResponse(BaseModel):
-    patient_id: UUID
+    patient_id: int
     full_name: str
     cnic: Optional[str] = None
     total_visits: int
@@ -269,13 +268,13 @@ class DoctorRegisterRequest(BaseModel):
     degrees: str = Field(..., min_length=2, max_length=200, description="e.g. MBBS, FCPS Cardiology")
     specialization: str = Field(..., min_length=2, max_length=100, description="e.g. Cardiologist")
     license_number: str = Field(..., min_length=3, max_length=80, description="PMDC / Medical License ID")
-    department_id: Optional[UUID] = None
+    department_id: Optional[int] = None
     department_code: Optional[str] = "GP"
     room_number: str = Field(default="Room 101", max_length=50)
 
 
 class DoctorRegisterResponse(BaseModel):
-    user_id: UUID
+    user_id: int
     full_name: str
     email: str
     role: str
@@ -312,4 +311,4 @@ class ManualPatientInfoUpdateRequest(BaseModel):
     cnic: Optional[str] = Field(default=None, max_length=25)
     phone_number: Optional[str] = Field(default=None, max_length=30)
     symptom_text: Optional[str] = Field(default=None, max_length=2000)
-    department_id: Optional[UUID] = None
+    department_id: Optional[int] = None

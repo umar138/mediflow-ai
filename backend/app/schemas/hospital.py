@@ -1,14 +1,13 @@
-import uuid
 from typing import Optional, List
 from pydantic import BaseModel
 
 
 class DoctorOut(BaseModel):
-    doctor_id: uuid.UUID
-    hospital_id: uuid.UUID
+    doctor_id: int
+    hospital_id: int
     email: str
     full_name: str
-    specialization_id: uuid.UUID
+    specialization_id: int
     specialization_name: Optional[str] = None
     is_active: bool = True
 
@@ -17,7 +16,7 @@ class DoctorOut(BaseModel):
 
 
 class HospitalOut(BaseModel):
-    hospital_id: uuid.UUID
+    hospital_id: int
     slug: str
     name: str
     is_active: bool = True

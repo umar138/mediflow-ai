@@ -1,5 +1,4 @@
 import sys
-import uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal, engine
@@ -12,7 +11,7 @@ from app.models.entities import (
 
 
 def run_clean_setup(reset: bool = True):
-    print("🧹 Cleaning database and setting up real hospital schema...")
+    print("🧹 Cleaning database and setting up real hospital schema with integer IDs (1, 2, 3...)...")
     if reset:
         Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -21,10 +20,9 @@ def run_clean_setup(reset: bool = True):
     try:
         now = datetime.now(timezone.utc)
 
-        # 1. Main Hospital
+        # 1. Main Hospital (clinic_id = 1)
         clinic = Clinic(
-            clinic_id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
-            slug="mediflow-central",
+            slug="mediflow-demo",
             name="MediFlow Central Hospital & Healthcare Center",
             public_notice="Welcome to MediFlow Central Hospital. Please check in at QR kiosk or reception for triage.",
             is_active=True,
@@ -33,7 +31,7 @@ def run_clean_setup(reset: bool = True):
         db.add(clinic)
         db.flush()
 
-        # 2. Real Medical Departments with Wings & Rooms
+        # 2. Real Medical Departments (department_id = 1, 2, 3, ...)
         departments_data = [
             ("CARD", "Cardiology & Heart Center", "2nd Floor — Heart Wing"),
             ("EMERG", "Emergency & Trauma Center", "Ground Floor — Emergency Block"),
@@ -43,9 +41,8 @@ def run_clean_setup(reset: bool = True):
             ("GYNAE", "Gynecology & Obstetrics", "3rd Floor — Maternity Wing"),
         ]
         dept_map = {}
-        for idx, (code, name, wing) in enumerate(departments_data, start=1):
+        for code, name, wing in departments_data:
             d = Department(
-                department_id=uuid.UUID(f"22222222-2222-2222-2222-2222222222{idx:02d}"),
                 clinic_id=clinic.clinic_id,
                 code=code,
                 name=name,
@@ -57,24 +54,23 @@ def run_clean_setup(reset: bool = True):
             dept_map[code] = d
         db.flush()
 
-        # 3. Real Staff Accounts with Degrees, Specializations, and Assigned Rooms
+        # 3. Staff Accounts (user_id = 1, 2, 3, ...)
         staff_data = [
             ("admin@mediflow.com", "Hospital Admin Office", UserRole.ADMIN, "MHA, Admin", "Hospital Administration", None, None, "Admin-01"),
             ("dr.ahmed@mediflow.com", "Dr. Ahmed Khan", UserRole.DOCTOR, "MBBS, FCPS Cardiology", "Cardiologist", "PMDC-48291-C", "Room 201 — Cardiology OPD", "CARD"),
             ("dr.sara@mediflow.com", "Dr. Sara Ahmed", UserRole.DOCTOR, "MBBS, MRCP (UK)", "General Physician", "PMDC-51203-M", "Room 102 — General OPD", "GP"),
             ("dr.fatima@mediflow.com", "Dr. Fatima Noor", UserRole.DOCTOR, "MBBS, FCPS Pediatrics", "Pediatric Specialist", "PMDC-60912-P", "Room 105 — Child Clinic", "PEDS"),
-            ("reception@mediflow.com", "Central Reception Desk", UserRole.RECEPTIONIST, None, "Intake & Registration", None, "Main Hall Desk 1", None),
-            ("nurse@mediflow.com", "Staff Nurse Ayesha", UserRole.NURSE, "BSc Nursing, Certified Triage", "Triage & Vitals", None, "Triage Station 1", "EMERG"),
+            ("reception@mediflow.demo", "Central Reception Desk", UserRole.RECEPTIONIST, None, "Intake & Registration", None, "Main Hall Desk 1", None),
+            ("nurse@mediflow.demo", "Staff Nurse Ayesha", UserRole.NURSE, "BSc Nursing, Certified Triage", "Triage & Vitals", None, "Triage Station 1", "EMERG"),
         ]
 
         doc_pw = get_password_hash("DoctorPass123!")
         admin_pw = get_password_hash("AdminPass123!")
-        staff_pw = get_password_hash("StaffPass123!")
+        staff_pw = get_password_hash("DemoPass123!")
 
         for idx, (email, name, role, degs, spec, lic, room, dept_code) in enumerate(staff_data, start=1):
             pw = admin_pw if role == UserRole.ADMIN else (doc_pw if role == UserRole.DOCTOR else staff_pw)
             u = StaffUser(
-                user_id=uuid.UUID(f"33333333-3333-3333-3333-3333333333{idx:02d}"),
                 email=email,
                 full_name=name,
                 password_hash=pw,

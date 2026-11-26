@@ -1,4 +1,3 @@
-import uuid
 import secrets
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +24,7 @@ router = APIRouter(prefix="/public", tags=["public"])
 SAFETY_MSG = "If symptoms are severe or worsening, alert clinic staff now."
 
 
-def _next_token_code(db: Session, clinic_id: uuid.UUID, urgency: UrgencyTier) -> str:
+def _next_token_code(db: Session, clinic_id: int, urgency: UrgencyTier) -> str:
     prefix = {"RED": "R", "YELLOW": "Y", "GREEN": "G"}.get(urgency.value, "T")
     count = db.query(QueueTicket).filter(QueueTicket.clinic_id == clinic_id).count() + 1
     return f"{prefix}-{count:03d}"
@@ -53,7 +52,7 @@ def get_public_clinic(slug: str, db: Session = Depends(get_db)):
 
 
 @router.post("/clinics/{clinic_id}/intakes", response_model=IntakeCreateResponse, status_code=status.HTTP_201_CREATED)
-async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: Session = Depends(get_db)):
+async def create_qr_intake(clinic_id: int, req: IntakeCreateRequest, db: Session = Depends(get_db)):
     clinic = db.query(Clinic).filter(Clinic.clinic_id == clinic_id, Clinic.is_active.is_(True)).first()
     if not clinic:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clinic not found")
@@ -217,7 +216,7 @@ async def create_qr_intake(clinic_id: uuid.UUID, req: IntakeCreateRequest, db: S
 
 @router.post("/clinics/{clinic_id}/emergency-intake", response_model=IntakeCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_emergency_intake(
-    clinic_id: uuid.UUID,
+    clinic_id: int,
     req: Optional[EmergencyIntakeRequest] = None,
     db: Session = Depends(get_db),
 ):
@@ -474,7 +473,7 @@ def get_public_display(display_token: str, db: Session = Depends(get_db)):
 
 
 @router.get("/clinics/{clinic_id}/live-summary")
-def get_public_live_summary(clinic_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_public_live_summary(clinic_id: int, db: Session = Depends(get_db)):
     """Sanitized real-time queue & consultation summary for the public Hub display."""
     clinic = db.query(Clinic).filter(Clinic.clinic_id == clinic_id, Clinic.is_active.is_(True)).first()
     if not clinic:
