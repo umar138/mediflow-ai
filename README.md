@@ -1,439 +1,175 @@
-# MediFlow AI
+# MediFlow AI — Smart Clinical Queue & Triage System
 
-MediFlow AI is a full-stack clinical queue, triage, and patient tracking demo. It provides public intake flows, role-based staff tools, doctor dashboards, live waiting-room displays, ticket tracking, appointment-style doctor selection, and multilingual clinical triage support.
+> **Capital Youth Expo — Track 2 Healthcare**  
+> An AI-assisted hospital queue management, multilingual clinical triage, real-time patient tracking, and appointment scheduling platform built with **Next.js 14**, **FastAPI**, **PostgreSQL / SQLite**, and **WebSockets**.
 
-The project combines a FastAPI backend with a Next.js frontend and can run with PostgreSQL or automatically fall back to a local SQLite database for demo use.
+> [!NOTE]
+> **Clinical Disclaimer:** MediFlow AI is a clinical workflow & triage decision-support tool — not a medical diagnosis.
 
-> **Safety notice:** MediFlow AI is a clinical workflow and triage decision-support prototype, not a diagnostic system or a substitute for professional medical judgment. The application is not validated for production clinical use.
+---
 
-## Features
+## Key Features
 
-- Public clinic lookup and department selection
-- QR-style and walk-in patient intake
-- English, Urdu, and Roman Urdu triage input
-- Deterministic red/yellow/green triage rules with optional OpenAI-compatible LLM enrichment
-- Priority queue scoring, estimated wait ranges, and active clinic delay adjustments
-- Patient ticket tracking and public waiting-room display tokens
-- Reception, nurse, admin, and doctor workflows
-- Patient registration, login, profile, and visit history
-- Staff and doctor account management
-- Live WebSocket updates for queues, displays, tickets, and doctors
-- PostgreSQL support with automatic SQLite fallback
-- Seeded synthetic data for local demonstrations
+### 1. Public Hub & Real-Time Queue Summary (`/`)
+- **Live Clinic Status:** Displays the currently serving token, next-in-line queue, waiting/in-consultation/completed counts, and average wait time via `GET /api/v1/public/clinics/{clinic_id}/live-summary` and WebSockets.
+- **1-Click Emergency RED Card (Zero-Form):** Dedicated emergency banner for critical cases (road accident, heart attack/chest pain, severe bleeding, breathing/unconscious). Issues an immediate `RED` priority token (`R-xxx`) directly to the **Emergency & Trauma Center (`EMERG`)** with zero form fields required.
 
-## Technology Stack
+### 2. Patient Portal (`/patient`)
+- **Authentication:** Sign in or register using CNIC or Email, plus password recovery.
+- **Smart AI Triage & Symptom Preview:** Evaluates symptoms in English, Roman Urdu, and Urdu script (with fuzzy typo matching such as `"heart attak"`) and optionally enhances triage via an OpenAI-compatible LLM (`LLM_API_KEY`).
+- **Doctor Selection, Attendance & Time-Slot Booking:**
+  - Patients select a department (e.g., Cardiology, GP, Pediatrics, Orthopedics, Gynecology) and view assigned doctors with their **Present / Absent** status and room number.
+  - Supports **today or future-date appointments** and displays **available time slots** (`09:00 AM` – `04:30 PM`), automatically disabling already-booked slots to prevent double-booking.
+  - **Emergency (`EMERG`)** skips doctor selection and routes directly to the on-duty Emergency team.
+- **Live Queue Tracker & Stepper:** Real-time position, ETA range, and check-in → waiting → consultation progress.
+- **Recent Health Records & Printable E-Prescriptions:** View past consultations, clinician notes, lab tests, and print/save official digital prescriptions.
+- **MediFlow AI Medical Guidance Chat:** Interactive assistant under **Need Assistance?** providing symptom guidance, red-flag warnings, department recommendations, and 1-click token booking.
 
-### Backend
+### 3. Doctor & Nurse Console (`/doctor`)
+- **Department & Room-Locked Queue:** Doctors and Nurses automatically see only their assigned department and room (no cross-department clutter).
+- **Doctor-Specific Routing:** Each doctor sees only patients booked for their `doctor_id` (plus unassigned walk-ins/emergencies in their department).
+- **Consultation Workflow:** View AI pre-brief, red-flag reasons, and vitals; **Call**, **Start**, and **Complete** consultations with digital prescriptions (medicines, dosage, frequency, lab tests, advice, follow-up).
 
-- Python
-- FastAPI
-- SQLAlchemy 2
-- Pydantic 2 and Pydantic Settings
-- PostgreSQL or SQLite
-- Alembic
-- JWT authentication
-- WebSockets
-- pytest
-- Optional OpenAI-compatible LLM API
+### 4. Admin Staff & Department Console (`/admin`)
+- **Staff Management:** Add Doctors, Nurses, and Receptionists; optionally assign custom integer IDs (`1, 2, 3...`); assign departments & rooms; and set login emails & passwords.
+- **Doctor Attendance:** 1-click **Present / Absent** toggle that controls whether a doctor can be booked for same-day appointments.
 
-### Frontend
+### 5. Reception & Nurse Console (`/reception`) & Waiting Room TV Display (`/display/[token]`)
+- **Walk-In Registration & Manual Info Update:** Register walk-in patients and fill in patient details later for 1-Click Emergency RED Card arrivals.
+- **16:9 Waiting Room Display:** Sanitized public screen showing token codes, clinic status, and notices without exposing private patient information (PHI).
 
-- Next.js 14
-- React 18
-- JavaScript and TypeScript
-- Tailwind CSS
-- Browser WebSocket clients
+---
 
-## Repository Layout
+## Project File Structure
 
 ```text
 mediflow-ai/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/          # Public, patient, staff, hospital, and auth routes
-│   │   ├── core/            # Configuration and JWT/security helpers
-│   │   ├── db/              # SQLAlchemy engine and sessions
-│   │   ├── models/          # Database entities
-│   │   ├── routers/         # Doctor auth and doctor WebSocket routes
-│   │   ├── schemas/         # Request and response contracts
-│   │   └── services/        # Triage, queue, ETA, display, and WebSocket logic
-│   ├── tests/               # pytest integration and triage tests
-│   ├── alembic/             # Database migrations
-│   ├── mediflow.db          # Local SQLite demo database
-│   └── requirements.txt
-├── frontend/
-│   ├── app/                 # Next.js pages and routes
-│   ├── components/          # Reusable UI components
-│   ├── hooks/               # React hooks
-│   ├── lib/                 # API and WebSocket clients
-│   └── public/              # Static frontend assets
+│   │   ├── api/v1/
+│   │   │   ├── auth.py            # Staff & Doctor JWT auth + registration
+│   │   │   ├── hospital.py        # Hospital & doctor listing endpoints
+│   │   │   ├── patient.py         # Patient auth, profile & visit history
+│   │   │   ├── public.py          # Public intake, 1-Click Emergency, live-summary, doctors/slots, AI guidance
+│   │   │   ├── router.py          # API v1 router registration
+│   │   │   ├── staff.py           # Queue management, vitals, call/start/complete, admin staff CRUD
+│   │   │   └── ws.py              # WebSocket endpoints (clinic, display, ticket)
+│   │   ├── core/
+│   │   │   ├── config.py          # Environment & triage settings (Pydantic)
+│   │   │   └── security.py        # Password hashing (bcrypt) & JWT helpers
+│   │   ├── db/
+│   │   │   ├── base.py            # SQLAlchemy declarative Base
+│   │   │   └── session.py         # PostgreSQL engine with automatic SQLite fallback
+│   │   ├── models/
+│   │   │   ├── entities.py        # Core relational models (integer PKs/FKs)
+│   │   │   └── hospital.py        # Hospital/specialization auxiliary models
+│   │   ├── schemas/
+│   │   │   ├── contracts.py       # Request/response Pydantic schemas
+│   │   │   ├── hospital.py        # Hospital response schemas
+│   │   │   └── triage.py          # Triage input/output models
+│   │   ├── services/
+│   │   │   ├── display_token.py   # Public TV display token helper
+│   │   │   ├── eta.py             # Dynamic ETA calculation
+│   │   │   ├── queue.py           # Priority-scored deterministic queue sorting
+│   │   │   ├── triage.py          # Hybrid deterministic + fuzzy + LLM triage engine
+│   │   │   └── ws_manager.py      # WebSocket connection manager
+│   │   ├── clean_setup.py         # Resets DB cleanly with zero dummy patient records
+│   │   ├── main.py                # FastAPI app, CORS, table creation & default bootstrap
+│   │   └── seed.py                # Synthetic demo seed script
+│   └── requirements.txt           # Python dependencies
 ├── db/
-│   ├── schema_hospital.sql
-│   └── seed_hospital.sql
-├── docs/
-├── deploy.ps1               # Windows deployment/build helper
-├── deploy.sh                # Bash deployment/build helper
-└── .env.example
+│   ├── schema_hospital.sql        # Reference SQL schema
+│   └── seed_hospital.sql          # Reference SQL seed
+├── frontend/
+│   ├── app/
+│   │   ├── admin/page.js          # Admin Staff, Department & Attendance Console
+│   │   ├── c/[slug]/join/page.js  # Public QR patient intake page
+│   │   ├── display/[token]/page.js# 16:9 Waiting Room TV Display
+│   │   ├── doctor/page.js         # Doctor & Nurse Consultation Queue
+│   │   ├── patient/page.js        # Patient Portal, Slot Booking, Records & AI Chat
+│   │   ├── reception/page.js      # Reception & Nurse Walk-In / Manual Update Console
+│   │   ├── track/[token]/page.js  # Live Patient Token Tracker
+│   │   ├── globals.css            # Tailwind + glass-morphic utilities
+│   │   ├── layout.js              # Root layout
+│   │   └── page.js                # Main Hub & 1-Click Emergency Banner
+│   ├── lib/
+│   │   ├── api.js                 # Typed/centralized API client
+│   │   └── ws.js                  # Reconnecting WebSocket helper
+│   └── package.json               # Next.js 14 + Tailwind CSS dependencies
+├── deploy.ps1                     # Windows production build & start script
+├── deploy.sh                      # Linux/macOS production build & start script
+└── README.md
 ```
 
-## Prerequisites
+---
 
-- Windows PowerShell or another supported shell
-- Python 3.10 or newer
-- Node.js 18 or newer
-- npm
-- PostgreSQL 14 or newer, only when PostgreSQL mode is required
+## Tech Stack
 
-## Quick Start
+- **Frontend:** Next.js 14 (App Router), React 18, Tailwind CSS
+- **Backend:** FastAPI, SQLAlchemy 2.0, Pydantic v2, Uvicorn, Python-JOSE (JWT), Passlib + Bcrypt
+- **Database:** PostgreSQL (primary, via `DATABASE_URL`) with automatic local SQLite (`backend/mediflow.db`) fallback
+- **Real-Time:** FastAPI WebSockets + polling fallback
 
-Run the backend and frontend in separate terminals from the repository root.
+---
 
-### 1. Create a Python environment
+## Default Admin Account
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r backend\requirements.txt
-```
+On startup, the backend automatically ensures the main clinic (`mediflow-demo`), core departments (`CARD`, `EMERG`, `GP`, `PEDS`, `ORTHO`, `GYNAE`), and the Admin account exist:
 
-### 2. Configure environment variables
+| Role  | Email              | Password   | Portal URL |
+|-------|--------------------|------------|------------|
+| Admin | `admin@gmail.com`  | `admin123` | `/admin`   |
 
-Copy the example file and adjust it as needed:
+From `/admin`, the Admin can create Doctors, Nurses, and Receptionists, assign their IDs, departments, and rooms, set their emails/passwords, and mark attendance (**Present / Absent**).
 
-```powershell
-Copy-Item .env.example .env
-```
+---
 
-The `.env` file is read by the backend. The frontend uses variables starting with `NEXT_PUBLIC_`.
+## Local Setup
 
-### 3. Start the backend
-
-```powershell
+### 1. Backend (FastAPI)
+```bash
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+*(Optional)* To reset the database to a clean state with zero dummy patient/ticket records:
+```bash
+python -m app.clean_setup
 ```
 
-Useful backend URLs:
-
-- API documentation: http://localhost:8000/docs
-- Alternative API documentation: http://localhost:8000/redoc
-- Health check: http://localhost:8000/health
-
-### 4. Start the frontend
-
-Open another terminal:
-
-```powershell
+### 2. Frontend (Next.js)
+```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Open http://localhost:3000.
-
-## Database Configuration
-
-The default `DATABASE_URL` targets PostgreSQL:
-
-```text
-postgresql+psycopg2://postgres:postgres@localhost:5432/mediflow_db
-```
-
-The database session layer attempts to connect to PostgreSQL with a short timeout. If PostgreSQL is unavailable, it automatically falls back to:
-
-```text
-sqlite:///backend/mediflow.db
-```
-
-To force SQLite explicitly, set:
-
-```dotenv
-DATABASE_URL=sqlite:///mediflow.db
-```
-
-An SQLite-only setup is useful for local demos and does not require a separate database server.
-
-### Seed Demo Data
-
-The most comprehensive seed script creates a synthetic clinic, departments, staff accounts, queue tickets, vitals, triage assessments, tracking tokens, display tokens, and consultation history.
-
-Run it from the repository root:
-
-```powershell
-python backend\app\seed.py
-```
-
-Reset and rebuild its demo tables:
-
-```powershell
-python backend\app\seed.py --reset
-```
-
-The alternate lightweight seed is available at:
-
-```powershell
-python backend\app\seed_app.py
-```
-
-Use `seed.py --reset` carefully because it drops and recreates all SQLAlchemy tables.
-
-## Demo Accounts
-
-The comprehensive seed script (`backend/app/seed.py`) uses:
-
-| Role | Email | Password |
-|---|---|---|
-| Admin | `admin@mediflow.demo` | `DemoPass123!` |
-| Receptionist | `reception@mediflow.demo` | `DemoPass123!` |
-| Nurse | `nurse@mediflow.demo` | `DemoPass123!` |
-| Doctor (GP) | `dr.sara@mediflow.demo` | `DemoPass123!` |
-| Doctor (Pediatrics) | `dr.hamza@mediflow.demo` | `DemoPass123!` |
-
-Demo data also includes:
-
-- Clinic slug: `islamabad-care-clinic`
-- TV display token: `demo-tv-display-token-2026`
-- Tracking tokens: `track-demo-001` through `track-demo-020`
-
-The lightweight seed uses:
-
-- Clinic slug: `mediflow-demo`
-- TV display token: `mediflow-main-display`
-- Tracking token: `track-demo-005`
-
-## Frontend Routes
-
-| Route | Purpose |
-|---|---|
-| `/` | Landing and hospital/clinic selection |
-| `/admin` | Administrative staff and clinic tools |
-| `/reception` | Reception queue and walk-in workflows |
-| `/doctor/login` | Doctor login |
-| `/doctor/dashboard` | Doctor consultation dashboard |
-| `/patient` | Patient registration/login and account area |
-| `/c/[slug]/join` | Public clinic intake/join flow |
-| `/track/[token]` | Public patient ticket tracking |
-| `/display/[token]` | Public waiting-room display |
-
-## API Overview
-
-All versioned application endpoints are mounted below `/api/v1`.
-
-### Public
-
-- `GET /api/v1/public/clinics/{slug}`
-- `POST /api/v1/public/clinics/{clinic_id}/intakes`
-- `POST /api/v1/public/clinics/{clinic_id}/emergency-intake`
-- `POST /api/v1/public/triage-preview`
-- `POST /api/v1/public/medical-guidance`
-- `GET /api/v1/public/tickets/{tracking_token}`
-- `GET /api/v1/public/display/{display_token}`
-- `GET /api/v1/public/clinics/{clinic_id}/live-summary`
-- `GET /api/v1/public/clinics/{clinic_id}/doctors`
-- `GET /api/v1/public/clinics/{clinic_id}/doctors/{doctor_id}/slots`
-
-### Staff
-
-- Login and doctor registration
-- Create tickets, record vitals, call and complete visits
-- Read and update queue state
-- Update patient details and clinic delays
-- List, create, update, and remove clinic staff
-
-### Patient
-
-- Register
-- Login with CNIC or email
-- Recover/reset a password through the demo forgot-password flow
-- Read profile and visit history
-
-### Realtime
-
-- `/api/v1/ws/clinics/{clinic_id}`
-- `/api/v1/ws/public-display/{display_token}`
-- `/api/v1/ws/tickets/{tracking_token}`
-- `/api/v1/doctor/ws/listen?token=...`
-
-FastAPI's interactive Swagger UI at `/docs` provides the complete request and response contracts.
-
-## Triage Behavior
-
-Triage uses two layers:
-
-1. **Deterministic rules** evaluate vitals and multilingual symptom phrases. Critical conditions are mapped to `RED`.
-2. **Optional LLM enrichment** asks an OpenAI-compatible API for normalized symptoms, department suggestions, a pre-consultation brief, and an urgency tier.
-
-The deterministic result can never be downgraded by an LLM result. If the LLM key is missing, the provider times out, or the response is invalid, the system uses the deterministic fallback.
-
-The triage module is designed for demonstration and should not be used for real diagnosis or emergency routing.
-
-## Environment Variables
-
-### Backend
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL URL | SQLAlchemy database connection |
-| `JWT_SECRET_KEY` | Development key | Signs access tokens |
-| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `720` | Access-token lifetime |
-| `LLM_API_KEY` | Empty | Enables optional LLM triage |
-| `LLM_BASE_URL` | Groq OpenAI-compatible URL | LLM API base URL |
-| `LLM_MODEL` | `llama-3.1-8b-instant` | LLM model name |
-| `LLM_TIMEOUT_SECONDS` | `4.0` | Maximum LLM request time |
-| `RULE_SET_VERSION` | `demo-rules-v1.0` | Recorded rule-set version |
-| `PROMPT_VERSION` | `triage-prompt-v1.0` | Recorded prompt version |
-| `DEFAULT_CONSULT_MINUTES` | `12` | Baseline consultation estimate |
-| `ETA_BUFFER_MINUTES` | `5` | ETA range buffer |
-
-### Frontend
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | Primary HTTP API base |
-| `NEXT_PUBLIC_API_BASE` | None | Compatibility HTTP API variable |
-| `NEXT_PUBLIC_WS_BASE_URL` | `ws://localhost:8000` | Public and staff WebSocket base |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8000` | Doctor WebSocket base |
-
-Set all public variables in the deployment environment; restart `npm run dev` after changing environment files.
-
-For production, replace the development JWT secret and the placeholder frontend URLs. Never commit real API keys or credentials.
-
-## Testing
-
-Run the backend test suite from the repository root:
-
-```powershell
-pytest -q backend\tests
-```
-
-The tests cover:
-
-- Invalid credential responses
-- Patient and doctor registration/login
-- RED triage safety against LLM downgrades
-- LLM failure fallback
-- Queue aging and priority limits
-
-Run frontend validation:
-
-```powershell
-cd frontend
-npm run lint
-npm run build
-```
-
-## Building and Deployment
-
-Build the Next.js frontend:
-
-```powershell
-cd frontend
-npm run build
-```
-
-Start the backend in a production-like process:
-
-```powershell
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-The repository includes `deploy.ps1` and `deploy.sh`, but they contain placeholder production URLs and should be reviewed before use.
-
-Before a real deployment:
-
-1. Use a managed PostgreSQL database.
-2. Set a strong `JWT_SECRET_KEY`.
-3. Restrict CORS origins instead of using `allow_origins=["*"]`.
-4. Configure HTTPS/WSS origins.
-5. Remove demo accounts or seed data.
-6. Configure logging, backups, monitoring, and rate limits.
-7. Complete clinical validation and regulatory review.
-
-## Troubleshooting
-
-### Backend starts but database operations fail
-
-- Confirm PostgreSQL is running.
-- Confirm the database name and credentials in `DATABASE_URL`.
-- Alternatively set `DATABASE_URL=sqlite:///mediflow.db`.
-- Run the seed script after the database is reachable.
-
-### Frontend cannot reach the backend
-
-- Confirm the backend is listening on port `8000`.
-- Open http://localhost:8000/health.
-- Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`.
-- Restart Next.js after changing an environment variable.
-
-### WebSocket updates do not connect
-
-- Set `NEXT_PUBLIC_WS_BASE_URL=ws://localhost:8000`.
-- Set `NEXT_PUBLIC_WS_URL=ws://localhost:8000` for doctor updates.
-- For HTTPS frontend deployments, use `wss://` instead of `ws://`.
-
-### Login fails
-
-- Run `python backend\app\seed.py`.
-- Use one of the documented demo accounts.
-- Confirm the JWT secret is stable across backend restarts.
-
-## Project Status
-
-MediFlow AI is a hackathon/demo application. It demonstrates end-to-end clinical queue workflows, real-time updates, and multilingual triage design, but it has not been clinically validated and should not process real patient information outside an authorized, secure prototype environment.
-
-## Upcoming Features
-
-The following items are planned enhancements for future releases. They are roadmap ideas, not guarantees or currently available functionality.
-
-### Clinical Workflow
-
-- Clinically validated triage rules reviewed by qualified medical professionals
-- Role-specific dashboards with configurable permissions and approval workflows
-- Electronic medical record integration
-- Digital prescriptions with download, signing, and pharmacy handoff
-- Lab orders, imaging requests, referrals, and discharge summaries
-- Multi-clinic and multi-hospital administration
-- Configurable departments, shift schedules, rooms, and doctor availability
-
-### Appointments and Patient Experience
-
-- SMS, email, and push appointment reminders
-- Calendar synchronization and recurring appointments
-- Family or caregiver-linked patient accounts
-- Patient consent and document-management workflows
-- Improved accessibility, including screen-reader and mobile-first experiences
-- Additional languages and localization
-- Real-time estimated-wait notifications
-
-### AI and Data
-
-- Multiple LLM providers with configurable failover
-- Retrieval-grounded hospital policy and protocol support
-- Triage explanations with auditable rule and model evidence
-- Human-in-the-loop review for uncertain or conflicting assessments
-- Bias, safety, and clinical accuracy monitoring
-- Redacted synthetic datasets for testing and model evaluation
-
-### Security and Operations
-
-- Restrictable CORS configuration and environment-specific settings
-- Strong secret management and token rotation
-- Refresh-token support and secure session handling
-- Role-based API authorization throughout every endpoint
-- Audit-log search, export, retention, and alerting
-- Database migrations as the standard schema-change workflow
-- Health checks, metrics, centralized logs, and uptime monitoring
-- Automated backups and disaster-recovery procedures
-- Rate limiting, abuse detection, and CAPTCHA where appropriate
-- Automated CI/CD builds, tests, container images, and deployments
-
-### Infrastructure
-
-- Docker and Docker Compose development environments
-- Kubernetes or managed-cloud deployment templates
-- Managed PostgreSQL, Redis, object storage, and message queues
-- Production WebSocket scaling
-- Infrastructure-as-code for repeatable environments
+Open `http://localhost:3000`.
+
+---
+
+## Deployment Guide (Vercel + Live Backend)
+
+1. **Deploy the Backend (`backend/`):**
+   - Host the FastAPI backend on **Render**, **Railway**, or **Fly.io** (recommended over serverless so WebSockets and PostgreSQL connection pooling stay active).
+   - Start command:
+     ```bash
+     uvicorn app.main:app --host 0.0.0.0 --port $PORT
+     ```
+   - Environment variables:
+     - `DATABASE_URL` (PostgreSQL connection string)
+     - `JWT_SECRET_KEY` (strong random secret)
+     - `LLM_API_KEY` *(optional, for LLM-enhanced triage & medical guidance)*
+
+2. **Deploy the Frontend on Vercel (`frontend/`):**
+   - Import the GitHub repository in **Vercel**.
+   - Set **Root Directory** to `frontend`.
+   - Add **Environment Variables** in Vercel Project Settings:
+     - `NEXT_PUBLIC_API_BASE_URL` = `https://your-live-backend-url.com`
+     - `NEXT_PUBLIC_WS_BASE_URL` = `wss://your-live-backend-url.com`
+   - Deploy — Vercel will automatically run `npm run build` and serve all routes.

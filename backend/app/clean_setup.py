@@ -56,7 +56,7 @@ def run_clean_setup(reset: bool = True):
 
         # 3. Staff Accounts (user_id = 1, 2, 3, ...)
         staff_data = [
-            ("admin@mediflow.com", "Hospital Admin Office", UserRole.ADMIN, "MHA, Admin", "Hospital Administration", None, None, "Admin-01"),
+            ("admin@gmail.com", "Hospital Admin Office", UserRole.ADMIN, "MHA, Admin", "Hospital Administration", None, None, "Admin-01"),
             ("dr.ahmed@mediflow.com", "Dr. Ahmed Khan", UserRole.DOCTOR, "MBBS, FCPS Cardiology", "Cardiologist", "PMDC-48291-C", "Room 201 — Cardiology OPD", "CARD"),
             ("dr.sara@mediflow.com", "Dr. Sara Ahmed", UserRole.DOCTOR, "MBBS, MRCP (UK)", "General Physician", "PMDC-51203-M", "Room 102 — General OPD", "GP"),
             ("dr.fatima@mediflow.com", "Dr. Fatima Noor", UserRole.DOCTOR, "MBBS, FCPS Pediatrics", "Pediatric Specialist", "PMDC-60912-P", "Room 105 — Child Clinic", "PEDS"),
@@ -65,7 +65,7 @@ def run_clean_setup(reset: bool = True):
         ]
 
         doc_pw = get_password_hash("DoctorPass123!")
-        admin_pw = get_password_hash("AdminPass123!")
+        admin_pw = get_password_hash("admin123")
         staff_pw = get_password_hash("DemoPass123!")
 
         for idx, (email, name, role, degs, spec, lic, room, dept_code) in enumerate(staff_data, start=1):
@@ -118,8 +118,8 @@ def run_clean_setup(reset: bool = True):
         print("\n💼 Staff Accounts (Password: StaffPass123!):")
         print("   - reception@mediflow.com")
         print("   - nurse@mediflow.com")
-        print("\n🔑 Admin Account (Password: AdminPass123!):")
-        print("   - admin@mediflow.com")
+        print("\n🔑 Admin Account (Password: admin123):")
+        print("   - admin@gmail.com")
         print("\n⭐ Database is ready in PostgreSQL for real patients and doctors!")
     finally:
         db.close()
