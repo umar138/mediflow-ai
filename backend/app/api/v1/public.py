@@ -12,7 +12,8 @@ from app.models.entities import (
 from app.schemas.contracts import (
     PublicClinicOut, DepartmentOut, IntakeCreateRequest, IntakeCreateResponse,
     CreatedTicketSummary, PublicTicketTrackOut, PublicDisplayOut,
-    EmergencyIntakeRequest, TriagePreviewRequest, TriagePreviewResponse
+    EmergencyIntakeRequest, TriagePreviewRequest, TriagePreviewResponse,
+    MedicalGuidanceRequest, MedicalGuidanceResponse
 )
 from app.schemas.triage import TriageInput
 from app.services.triage import run_hybrid_triage, more_severe, _evaluate_deterministic_rules, _infer_department
@@ -235,11 +236,27 @@ async def create_emergency_intake(
     if not depts:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No active department found for clinic")
 
-    # Prefer Emergency / Trauma department if present, else first active department
+    # Always route 1-Click Emergency RED Card directly to the Emergency & Trauma Department
     dept = next(
-        (d for d in depts if "emerg" in d.name.lower() or d.code.upper() in {"EMER", "ER", "TRAUMA"}),
-        depts[0],
+        (
+            d
+            for d in depts
+            if d.code.upper() in {"EMERG", "EMER", "ER", "TRAUMA"}
+            or "emerg" in d.name.lower()
+            or "trauma" in d.name.lower()
+        ),
+        None,
     )
+    if not dept:
+        dept = Department(
+            clinic_id=clinic_id,
+            code="EMERG",
+            name="Emergency & Trauma Center",
+            floor_or_wing="Ground Floor — Emergency Block",
+            is_active=True,
+        )
+        db.add(dept)
+        db.flush()
 
     now = datetime.now(timezone.utc)
     urgency_enum = UrgencyTier.RED
@@ -529,3 +546,162 @@ def get_public_live_summary(clinic_id: int, db: Session = Depends(get_db)):
         "avg_wait_minutes": avg_wait,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _generate_smart_medical_guidance(question: str, urgency_tier: str, rec_dept: str | None, reasons: list[str]) -> tuple[str, list[str]]:
+    q = (question or "").lower()
+    if urgency_tier == "RED":
+        reason_txt = f" ({reasons[0]})" if reasons else ""
+        return (
+            f"🚨 URGENT EMERGENCY WARNING{reason_txt}:\n"
+            "Your symptoms may indicate a serious medical emergency. Please do NOT wait in a regular queue.\n\n"
+            "• Use the 1-Click Emergency RED Card immediately or go straight to the Emergency & Trauma Center.\n"
+            "• If someone is with you, alert reception/triage staff right away.\n"
+            "• Keep the patient resting and do not give food or water if drowsy or having chest pain/breathing difficulty.",
+            ["Use 1-Click Emergency RED Card", "Go to Emergency & Trauma Center"],
+        )
+
+    if any(k in q for k in ["fever", "bukhar", "temperature", "chills", "body ache", "flu", "cold", "nazla", "zukam", "khansi", "cough", "sore throat", "gala"]):
+        return (
+            "🌡️ Fever / Respiratory Care Guidance:\n"
+            "• Stay well hydrated with water, ORS, or warm clear fluids.\n"
+            "• Rest and monitor your temperature every 4–6 hours.\n"
+            "• For mild discomfort, standard paracetamol can help (follow label or doctor dosing; avoid aspirin in children).\n"
+            "• Seek prompt medical review if fever lasts > 3 days, exceeds 103°F (39.4°C), or is accompanied by breathing trouble, rash, or severe weakness.\n\n"
+            f"Recommended Department: {rec_dept or 'General Medicine & Acute OPD'}",
+            ["Book General Medicine Token", "Monitor Temperature"],
+        )
+
+    if any(k in q for k in ["stomach", "pait", "pet", "acidity", "gas", "vomit", "ulti", "diarrhea", "loose motion", "nausea", "heartburn", "constipation"]):
+        return (
+            "🩺 Digestive & Stomach Care Guidance:\n"
+            "• Sip small amounts of ORS or water frequently to prevent dehydration.\n"
+            "• Eat light, bland foods (rice, banana, toast, yogurt) and avoid spicy, oily, or heavy meals.\n"
+            "• Seek urgent care if you notice severe/sharp abdominal pain, persistent vomiting, blood in stool/vomit, or dizziness.\n\n"
+            f"Recommended Department: {rec_dept or 'General Medicine & Acute OPD'}",
+            ["Book General Medicine Token", "Stay Hydrated with ORS"],
+        )
+
+    if any(k in q for k in ["headache", "sar dard", "migraine", "dizzy", "chakkar", "bp", "blood pressure", "hypertension", "sugar", "diabetes"]):
+        return (
+            "💓 Blood Pressure, Sugar & Headache Guidance:\n"
+            "• Sit or lie down in a calm, quiet room and check your BP or blood glucose if a monitor is available.\n"
+            "• Stay hydrated and avoid skipping prescribed regular medications.\n"
+            "• If you experience sudden severe headache, blurred vision, chest tightness, numbness, or BP > 180/120, seek emergency care immediately.\n\n"
+            f"Recommended Department: {rec_dept or 'General Medicine & Acute OPD'}",
+            ["Book Consultation Token", "Check BP / Glucose"],
+        )
+
+    if any(k in q for k in ["bone", "joint", "knee", "back pain", "kamar", "sprain", "swelling", "muscle", "shoulder", "neck"]):
+        return (
+            "🦴 Bone & Joint Care Guidance:\n"
+            "• Rest the affected area and avoid heavy lifting or sudden strain.\n"
+            "• For recent sprains/swelling, a cold compress wrapped in a cloth for 15 minutes can help ease discomfort.\n"
+            "• If there is severe pain, inability to bear weight, or visible deformity, please visit Orthopedics or Emergency.\n\n"
+            f"Recommended Department: {rec_dept or 'Orthopedics & Joint Clinic'}",
+            ["Book Orthopedics Token"],
+        )
+
+    if any(k in q for k in ["child", "baby", "kid", "bacha", "bachi", "infant", "peds"]):
+        return (
+            "👶 Pediatric Care Guidance:\n"
+            "• Keep your child comfortable, hydrated, and closely monitored for fever, breathing rate, or activity level.\n"
+            "• Never give adult medications without a pediatrician's advice.\n"
+            "• Seek immediate care if the child is unusually drowsy, refuses fluids, has fast breathing, or has a high fever.\n\n"
+            f"Recommended Department: {rec_dept or 'Pediatrics & Child Healthcare'}",
+            ["Book Pediatrics Token"],
+        )
+
+    if any(k in q for k in ["skin", "rash", "allergy", "itching", "khujli", "infection", "wound"]):
+        return (
+            "🧴 Skin & Allergy Guidance:\n"
+            "• Keep the area clean and dry; avoid scratching or applying unprescribed steroid creams.\n"
+            "• Note any new foods, soaps, or medicines that may have triggered the reaction.\n"
+            "• Seek emergency care immediately if a rash comes with swelling of lips/tongue or difficulty breathing.\n\n"
+            f"Recommended Department: {rec_dept or 'General Medicine & Acute OPD'}",
+            ["Book OPD Consultation"],
+        )
+
+    if any(k in q for k in ["prescription", "medicine", "tablet", "report", "lab", "test", "dawai", "parchi"]):
+        return (
+            "💊 Prescriptions & Lab Reports Guidance:\n"
+            "• You can view and print your doctor-verified digital prescriptions anytime from the Prescriptions or My Health Records tab.\n"
+            "• Always complete prescribed antibiotic courses and follow dosage timings (e.g. 1-0-1 after meals).\n"
+            "• If you feel side effects or symptoms don't improve, book a follow-up token with your doctor.",
+            ["View Prescriptions", "Book Follow-up Token"],
+        )
+
+    return (
+        "🤖 MediFlow AI Medical Guidance:\n"
+        f"• Based on your query, the suggested clinic department is: {rec_dept or 'General Medicine & Acute OPD'}.\n"
+        "• Monitor your symptoms, stay hydrated, and rest. Avoid self-medicating with antibiotics or strong painkillers without a doctor's review.\n"
+        "• If symptoms worsen, last more than 2–3 days, or include severe pain, high fever, or shortness of breath, please book a queue token or visit Emergency.",
+        ["Book Queue Token", "Open Live Queue"],
+    )
+
+
+@router.post("/medical-guidance", response_model=MedicalGuidanceResponse)
+def medical_guidance_chat(req: MedicalGuidanceRequest):
+    """Interactive AI Medical Guidance assistant for the Patient Portal."""
+    triage_res = run_hybrid_triage(TriageInput(
+        display_name="Patient",
+        age_years=req.age_years,
+        preferred_language=req.preferred_language,
+        symptom_text=req.question,
+        input_mode="TEXT",
+    ))
+
+    rec_dept = triage_res.recommended_department or _infer_department(req.question, "General Medicine & Acute OPD")
+    disclaimer = "Clinical guidance only — not a medical diagnosis. In an emergency, alert clinic staff or use the 1-Click RED Card."
+
+    # Optional LLM enhancement when API key is configured
+    from app.core.config import settings
+    if settings.LLM_API_KEY and triage_res.urgency_tier != "RED":
+        try:
+            import httpx
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are MediFlow AI, a helpful, concise medical guidance assistant in a hospital patient portal. "
+                        "Provide clear, safe, practical health guidance, red-flag warnings, and suggest the appropriate hospital department "
+                        f"(suggested: {rec_dept or 'General Medicine'}). Never claim to diagnose or prescribe controlled drugs. Keep under 140 words."
+                    ),
+                }
+            ]
+            for m in req.history[-6:]:
+                messages.append({"role": m.role, "content": m.content})
+            messages.append({"role": "user", "content": req.question})
+
+            with httpx.Client(timeout=settings.LLM_TIMEOUT_SECONDS) as client:
+                r = client.post(
+                    f"{settings.LLM_BASE_URL.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.LLM_API_KEY}"},
+                    json={"model": settings.LLM_MODEL, "messages": messages, "temperature": 0.3},
+                )
+                r.raise_for_status()
+                ai_text = r.json()["choices"][0]["message"]["content"].strip()
+                if ai_text:
+                    return MedicalGuidanceResponse(
+                        reply=ai_text,
+                        urgency_tier=triage_res.urgency_tier,
+                        recommended_department=rec_dept,
+                        quick_actions=["Book Queue Token"],
+                        disclaimer=disclaimer,
+                    )
+        except Exception:
+            pass
+
+    reply_text, quick_actions = _generate_smart_medical_guidance(
+        req.question,
+        triage_res.urgency_tier,
+        rec_dept,
+        triage_res.red_flag_reasons,
+    )
+    return MedicalGuidanceResponse(
+        reply=reply_text,
+        urgency_tier=triage_res.urgency_tier,
+        recommended_department=rec_dept,
+        quick_actions=quick_actions,
+        disclaimer=disclaimer,
+    )

@@ -312,3 +312,67 @@ class ManualPatientInfoUpdateRequest(BaseModel):
     phone_number: Optional[str] = Field(default=None, max_length=30)
     symptom_text: Optional[str] = Field(default=None, max_length=2000)
     department_id: Optional[int] = None
+
+
+# --- Admin Staff Management Schemas ---
+class AdminStaffItemOut(BaseModel):
+    user_id: int
+    full_name: str
+    email: str
+    role: str
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    specialization: Optional[str] = None
+    degrees: Optional[str] = None
+    license_number: Optional[str] = None
+    room_number: Optional[str] = None
+    phone_number: Optional[str] = None
+    is_active: bool = True
+
+
+class AdminStaffCreateRequest(BaseModel):
+    user_id: Optional[int] = Field(default=None, ge=1)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    email: str = Field(..., min_length=3, max_length=200)
+    password: str = Field(..., min_length=6)
+    role: Literal["DOCTOR", "NURSE", "RECEPTIONIST", "ADMIN"] = "DOCTOR"
+    department_id: Optional[int] = None
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    degrees: Optional[str] = Field(default=None, max_length=200)
+    license_number: Optional[str] = Field(default=None, max_length=80)
+    room_number: Optional[str] = Field(default=None, max_length=50)
+    phone_number: Optional[str] = Field(default=None, max_length=30)
+
+
+class AdminStaffUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    email: Optional[str] = Field(default=None, min_length=3, max_length=200)
+    password: Optional[str] = Field(default=None, min_length=6)
+    role: Optional[Literal["DOCTOR", "NURSE", "RECEPTIONIST", "ADMIN"]] = None
+    department_id: Optional[int] = None
+    specialization: Optional[str] = Field(default=None, max_length=100)
+    degrees: Optional[str] = Field(default=None, max_length=200)
+    license_number: Optional[str] = Field(default=None, max_length=80)
+    room_number: Optional[str] = Field(default=None, max_length=50)
+    phone_number: Optional[str] = Field(default=None, max_length=30)
+    is_active: Optional[bool] = None
+
+
+class MedicalGuidanceMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class MedicalGuidanceRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    age_years: int = Field(default=30, ge=0, le=130)
+    preferred_language: Literal["en", "ur", "roman_ur"] = "en"
+    history: List[MedicalGuidanceMessage] = Field(default_factory=list)
+
+
+class MedicalGuidanceResponse(BaseModel):
+    reply: str
+    urgency_tier: str
+    recommended_department: Optional[str] = None
+    quick_actions: List[str] = Field(default_factory=list)
+    disclaimer: str

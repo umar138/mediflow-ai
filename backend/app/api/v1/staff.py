@@ -2,12 +2,14 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.core.security import get_password_hash
 from app.api.v1.auth import get_current_staff_context, require_roles
 from app.models.entities import (
     Clinic, Department, Patient, QueueTicket, IntakeRecord, StaffUser,
-    VitalObservation, TriageAssessment, TriageRuleHit, Consultation,
+    ClinicMembership, VitalObservation, TriageAssessment, TriageRuleHit, Consultation,
     ClinicDelay, PatientTrackingToken, AuditLog,
     UserRole, TicketStatus, UrgencyTier, IntakeChannel, InputMode,
     PreferredLanguage, TriageSource
@@ -15,7 +17,8 @@ from app.models.entities import (
 from app.schemas.contracts import (
     WalkInTicketCreateRequest, IntakeCreateResponse, CreatedTicketSummary,
     VitalsCreateRequest, QueueResponseOut, QueueTicketItemOut, VitalsSnapshot,
-    TicketActionRequest, DelayCreateRequest, ManualPatientInfoUpdateRequest
+    TicketActionRequest, DelayCreateRequest, ManualPatientInfoUpdateRequest,
+    AdminStaffItemOut, AdminStaffCreateRequest, AdminStaffUpdateRequest
 )
 from app.schemas.triage import TriageInput
 from app.services.triage import run_hybrid_triage, more_severe
@@ -318,12 +321,17 @@ def get_clinic_queue(
     db: Session = Depends(get_db),
 ):
     _assert_same_clinic(ctx, clinic_id)
-    waiting_sorted = get_sorted_waiting_tickets(db, clinic_id, department_id)
+    # Doctors only see patients from their assigned department
+    effective_dept_id = department_id
+    if ctx["role"] == UserRole.DOCTOR and ctx.get("department_id") is not None:
+        effective_dept_id = ctx["department_id"]
+
+    waiting_sorted = get_sorted_waiting_tickets(db, clinic_id, effective_dept_id)
     waiting_ids = {t.ticket_id for t, _, _ in waiting_sorted}
 
     q = db.query(QueueTicket).filter(QueueTicket.clinic_id == clinic_id)
-    if department_id is not None:
-        q = q.filter(QueueTicket.department_id == department_id)
+    if effective_dept_id is not None:
+        q = q.filter(QueueTicket.department_id == effective_dept_id)
     all_tickets = q.all()
 
     ahead_map = {t.ticket_id: idx for idx, (t, _, _) in enumerate(waiting_sorted)}
@@ -337,11 +345,11 @@ def get_clinic_queue(
 
     # Order active: CALLED/IN_CONSULTATION first, then WAITING by priority_score DESC, checked_in_at ASC
     status_rank = {TicketStatus.IN_CONSULTATION.value: 0, TicketStatus.CALLED.value: 1, TicketStatus.WAITING.value: 2, TicketStatus.ON_HOLD.value: 3, TicketStatus.NO_SHOW.value: 4}
-    items.sort(key=lambda x: (status_rank.get(x.status, 9), -x.priority_score, str(x.ticket_id)))
+    items.sort(key=lambda x: (status_rank.get(x.status, 9), -x.priority_score, x.ticket_id))
 
     return QueueResponseOut(
         generated_at=datetime.now(timezone.utc),
-        active_delay_minutes=get_active_delay_minutes(db, clinic_id, department_id),
+        active_delay_minutes=get_active_delay_minutes(db, clinic_id, effective_dept_id),
         tickets=items,
     )
 
@@ -665,3 +673,186 @@ async def update_clinic_delay(
     db.commit()
     await ws_manager.broadcast_staff(str(clinic_id), {"type": "display.updated", "clinic_id": str(clinic_id)})
     return {"status": "ok", "delay_id": str(delay.delay_id), "delay_minutes": delay.delay_minutes, "is_active": delay.is_active}
+
+
+# --- Admin Staff Management (Doctors, Nurses, Receptionists) ---
+def _build_staff_item(db: Session, user: StaffUser, membership: ClinicMembership) -> AdminStaffItemOut:
+    dept_name = None
+    if membership.department_id:
+        dept = db.query(Department).filter(Department.department_id == membership.department_id).first()
+        if dept:
+            dept_name = f"{dept.name} ({dept.code})"
+    return AdminStaffItemOut(
+        user_id=user.user_id,
+        full_name=user.full_name,
+        email=user.email,
+        role=membership.role.value,
+        department_id=membership.department_id,
+        department_name=dept_name,
+        specialization=user.specialization,
+        degrees=user.degrees,
+        license_number=user.license_number,
+        room_number=user.room_number,
+        phone_number=user.phone_number,
+        is_active=user.is_active,
+    )
+
+
+@router.get("/clinics/{clinic_id}/staff", response_model=List[AdminStaffItemOut])
+def list_clinic_staff(
+    clinic_id: int,
+    ctx: dict = Depends(require_roles({UserRole.ADMIN})),
+    db: Session = Depends(get_db),
+):
+    _assert_same_clinic(ctx, clinic_id)
+    rows = (
+        db.query(StaffUser, ClinicMembership)
+        .join(ClinicMembership, StaffUser.user_id == ClinicMembership.user_id)
+        .filter(ClinicMembership.clinic_id == clinic_id)
+        .order_by(StaffUser.user_id.asc())
+        .all()
+    )
+    return [_build_staff_item(db, user, membership) for user, membership in rows]
+
+
+@router.post("/clinics/{clinic_id}/staff", response_model=AdminStaffItemOut, status_code=status.HTTP_201_CREATED)
+def create_clinic_staff(
+    clinic_id: int,
+    req: AdminStaffCreateRequest,
+    ctx: dict = Depends(require_roles({UserRole.ADMIN})),
+    db: Session = Depends(get_db),
+):
+    _assert_same_clinic(ctx, clinic_id)
+    clean_email = req.email.strip().lower()
+    if db.query(StaffUser).filter(StaffUser.email == clean_email).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered for another staff user.")
+
+    if req.user_id is not None:
+        if db.query(StaffUser).filter(StaffUser.user_id == req.user_id).first():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Staff ID {req.user_id} is already in use.")
+
+    if req.department_id is not None:
+        dept = db.query(Department).filter(
+            Department.department_id == req.department_id,
+            Department.clinic_id == clinic_id,
+        ).first()
+        if not dept:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid department_id for this clinic.")
+
+    staff_kwargs = dict(
+        email=clean_email,
+        full_name=req.full_name.strip(),
+        password_hash=get_password_hash(req.password),
+        specialization=req.specialization.strip() if req.specialization else None,
+        degrees=req.degrees.strip() if req.degrees else None,
+        license_number=req.license_number.strip() if req.license_number else None,
+        room_number=req.room_number.strip() if req.room_number else None,
+        phone_number=req.phone_number.strip() if req.phone_number else None,
+        is_active=True,
+    )
+    if req.user_id is not None:
+        staff_kwargs["user_id"] = req.user_id
+
+    user = StaffUser(**staff_kwargs)
+    db.add(user)
+    db.flush()
+
+    if req.user_id is not None and db.bind and db.bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT setval(pg_get_serial_sequence('staff_users', 'user_id'), COALESCE((SELECT MAX(user_id) FROM staff_users), 1))")
+        )
+
+    membership = ClinicMembership(
+        user_id=user.user_id,
+        clinic_id=clinic_id,
+        department_id=req.department_id,
+        role=UserRole(req.role),
+    )
+    db.add(membership)
+    db.commit()
+    db.refresh(user)
+    db.refresh(membership)
+    return _build_staff_item(db, user, membership)
+
+
+@router.patch("/clinics/{clinic_id}/staff/{user_id}", response_model=AdminStaffItemOut)
+def update_clinic_staff(
+    clinic_id: int,
+    user_id: int,
+    req: AdminStaffUpdateRequest,
+    ctx: dict = Depends(require_roles({UserRole.ADMIN})),
+    db: Session = Depends(get_db),
+):
+    _assert_same_clinic(ctx, clinic_id)
+    membership = (
+        db.query(ClinicMembership)
+        .filter(ClinicMembership.clinic_id == clinic_id, ClinicMembership.user_id == user_id)
+        .first()
+    )
+    user = db.query(StaffUser).filter(StaffUser.user_id == user_id).first()
+    if not membership or not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found in this clinic.")
+
+    if req.email is not None:
+        clean_email = req.email.strip().lower()
+        existing = db.query(StaffUser).filter(StaffUser.email == clean_email, StaffUser.user_id != user_id).first()
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already used by another staff member.")
+        user.email = clean_email
+    if req.full_name is not None:
+        user.full_name = req.full_name.strip()
+    if req.password is not None:
+        user.password_hash = get_password_hash(req.password)
+    if req.specialization is not None:
+        user.specialization = req.specialization.strip() or None
+    if req.degrees is not None:
+        user.degrees = req.degrees.strip() or None
+    if req.license_number is not None:
+        user.license_number = req.license_number.strip() or None
+    if req.room_number is not None:
+        user.room_number = req.room_number.strip() or None
+    if req.phone_number is not None:
+        user.phone_number = req.phone_number.strip() or None
+    if req.is_active is not None:
+        user.is_active = req.is_active
+    if req.role is not None:
+        membership.role = UserRole(req.role)
+    if "department_id" in req.model_fields_set:
+        if req.department_id is not None:
+            dept = db.query(Department).filter(
+                Department.department_id == req.department_id,
+                Department.clinic_id == clinic_id,
+            ).first()
+            if not dept:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid department_id for this clinic.")
+        membership.department_id = req.department_id
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(membership)
+    return _build_staff_item(db, user, membership)
+
+
+@router.delete("/clinics/{clinic_id}/staff/{user_id}")
+def delete_clinic_staff(
+    clinic_id: int,
+    user_id: int,
+    ctx: dict = Depends(require_roles({UserRole.ADMIN})),
+    db: Session = Depends(get_db),
+):
+    _assert_same_clinic(ctx, clinic_id)
+    if ctx["user_id"] == user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own admin account.")
+    membership = (
+        db.query(ClinicMembership)
+        .filter(ClinicMembership.clinic_id == clinic_id, ClinicMembership.user_id == user_id)
+        .first()
+    )
+    user = db.query(StaffUser).filter(StaffUser.user_id == user_id).first()
+    if not membership or not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff member not found in this clinic.")
+
+    db.delete(membership)
+    db.delete(user)
+    db.commit()
+    return {"status": "deleted", "user_id": user_id}

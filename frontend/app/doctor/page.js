@@ -76,8 +76,9 @@ export default function DoctorDashboardPage() {
       } catch {
         // fallback if clinic slug differs
       }
-      // Load all departments by default so doctor never gets an empty list
-      await loadQueue(authRes, "");
+      const initialDept = authRes.role === "DOCTOR" && authRes.department_id ? String(authRes.department_id) : "";
+      setSelectedDeptId(initialDept);
+      await loadQueue(authRes, initialDept);
     } catch (err) {
       setError(err.message || "Authentication failed.");
     }
@@ -306,19 +307,30 @@ export default function DoctorDashboardPage() {
           {/* Department Filter & Controls */}
           <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-100 p-3.5 rounded-xl">
             <div className="flex items-center gap-2 text-sm">
-              <span className="font-semibold text-slate-700">Filter Department:</span>
-              <select
-                value={selectedDeptId}
-                onChange={(e) => setSelectedDeptId(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Departments (Hospital Wide Queue)</option>
-                {(clinic?.departments || []).map((d) => (
-                  <option key={d.department_id} value={d.department_id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
+              {session.role === "DOCTOR" && session.department_id ? (
+                <>
+                  <span className="font-semibold text-slate-700">Assigned Department Queue:</span>
+                  <span className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-bold text-white">
+                    {session.department_name || `Department #${session.department_id}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-700">Filter Department:</span>
+                  <select
+                    value={selectedDeptId}
+                    onChange={(e) => setSelectedDeptId(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Departments (Hospital Wide Queue)</option>
+                    {(clinic?.departments || []).map((d) => (
+                      <option key={d.department_id} value={d.department_id}>
+                        {d.name} ({d.code})
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
             <div className="text-xs text-slate-500">
               Total Active Queue: <span className="font-bold text-slate-800">{queueData?.tickets?.length || 0}</span>

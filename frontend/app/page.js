@@ -106,6 +106,9 @@ export default function HomePage() {
             <a href="#capabilities" className="hover:text-teal-700 transition">
               About Us
             </a>
+            <Link href="/admin" className="hover:text-teal-700 transition font-semibold text-teal-700">
+              Admin
+            </Link>
           </nav>
 
           {/* Right: Clinical Support Pill + Mobile Menu Button */}
@@ -318,12 +321,31 @@ export default function HomePage() {
                   🚨
                 </div>
                 <div>
-                  <h2 className="text-base sm:text-lg font-extrabold tracking-tight">
-                    Accident or Critical Emergency?
-                  </h2>
-                  <p className="text-xs sm:text-sm text-rose-50">
-                    Get immediate priority and notify the right team in one click. (بغیر فارم کے فوری ریڈ کارڈ)
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-extrabold tracking-tight">
+                      Accident or Critical Emergency?
+                    </h2>
+                    <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                      Direct to Emergency Department
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-rose-50 mt-0.5">
+                    Use for emergency cases only — token goes directly to the Emergency &amp; Trauma Department. (بغیر فارم کے فوری ریڈ کارڈ)
                   </p>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="rounded-full bg-red-900/40 border border-white/20 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                      🚗 Road Accident
+                    </span>
+                    <span className="rounded-full bg-red-900/40 border border-white/20 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                      ❤️ Heart Attack / Chest Pain
+                    </span>
+                    <span className="rounded-full bg-red-900/40 border border-white/20 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                      🩸 Severe Bleeding / Trauma
+                    </span>
+                    <span className="rounded-full bg-red-900/40 border border-white/20 px-2.5 py-0.5 text-[10px] font-semibold text-white">
+                      🫁 Breathing / Unconscious
+                    </span>
+                  </div>
                 </div>
               </div>
               <button

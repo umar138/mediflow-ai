@@ -54,6 +54,64 @@ export default function PatientPortalPage() {
   // Forgot password state
   const [forgotIdentifier, setForgotIdentifier] = useState("");
 
+  // AI Medical Guidance Chat state
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+  const [aiChatMessages, setAiChatMessages] = useState([
+    {
+      role: "assistant",
+      content:
+        "Hello! I'm MediFlow AI. Describe your symptoms or health question, and I'll provide safe medical guidance, warning signs, and the right clinic department for you.",
+      urgency_tier: "GREEN",
+      recommended_department: null,
+    },
+  ]);
+
+  async function handleSendAiMessage(customText) {
+    const q = (typeof customText === "string" ? customText : aiChatInput).trim();
+    if (!q || aiChatLoading) return;
+    if (typeof customText !== "string") setAiChatInput("");
+
+    const userMsg = { role: "user", content: q };
+    const nextHistory = [...aiChatMessages, userMsg];
+    setAiChatMessages(nextHistory);
+    setAiChatLoading(true);
+
+    try {
+      const res = await api.askMedicalGuidance({
+        question: q,
+        age_years: profile?.age_years || 30,
+        preferred_language: "en",
+        history: nextHistory
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .slice(-6)
+          .map((m) => ({ role: m.role, content: m.content })),
+      });
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: res.reply,
+          urgency_tier: res.urgency_tier,
+          recommended_department: res.recommended_department,
+          disclaimer: res.disclaimer,
+        },
+      ]);
+    } catch (err) {
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: err.message || "Sorry, I couldn't connect to MediFlow AI right now. Please try again.",
+          urgency_tier: "YELLOW",
+        },
+      ]);
+    } finally {
+      setAiChatLoading(false);
+    }
+  }
+
   function showStayTuned(featureName = "This feature") {
     setErrorMsg("");
     setSuccessMsg(`✨ ${featureName} — Upcoming event, stay tuned!`);
@@ -1831,7 +1889,7 @@ export default function PatientPortalPage() {
                           </p>
                           <button
                             type="button"
-                            onClick={() => showStayTuned("MediFlow AI Chat")}
+                            onClick={() => setAiChatOpen(true)}
                             className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#0F9D6E] px-4 py-2 text-xs font-bold text-white hover:bg-[#0c825b] transition"
                           >
                             <span>Chat with MediFlow AI →</span>
@@ -2360,7 +2418,8 @@ export default function PatientPortalPage() {
                   </span>
                   <div className="text-xs font-mono text-slate-600 mt-1">
                     Rx ID: RX-{viewingPrescription.token_code}-
-                    {(viewingPrescription.ticket_id || "")
+                    {String(viewingPrescription.ticket_id ?? "")
+                      .padStart(4, "0")
                       .slice(0, 6)
                       .toUpperCase()}
                   </div>
@@ -2606,6 +2665,159 @@ export default function PatientPortalPage() {
                 Close (بند کریں)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MEDIFLOW AI MEDICAL GUIDANCE CHAT MODAL */}
+      {aiChatOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 flex flex-col max-h-[88vh]">
+            {/* Chat Header */}
+            <div className="bg-gradient-to-r from-[#0F9D6E] to-teal-700 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-white/15 flex items-center justify-center text-2xl">
+                  🤖
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold">
+                    MediFlow AI — Medical Guidance Assistant
+                  </h3>
+                  <p className="text-[11px] text-emerald-100">
+                    Symptom guidance, warning signs &amp; department recommendations
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAiChatOpen(false)}
+                className="rounded-xl bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-bold text-white transition"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Quick Prompt Chips */}
+            <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-1.5">
+              {[
+                "Fever & body ache",
+                "Chest pain / high BP",
+                "Stomach pain & acidity",
+                "Child cough & cold",
+                "Joint or back pain",
+              ].map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleSendAiMessage(prompt)}
+                  disabled={aiChatLoading}
+                  className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-50 transition disabled:opacity-50"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3.5 bg-slate-50/40">
+              {aiChatMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs leading-relaxed whitespace-pre-line shadow-2xs ${
+                      msg.role === "user"
+                        ? "bg-[#0F9D6E] text-white rounded-br-sm"
+                        : msg.urgency_tier === "RED"
+                        ? "bg-rose-50 border-2 border-rose-400 text-rose-950 rounded-bl-sm"
+                        : "bg-white border border-slate-200 text-slate-800 rounded-bl-sm"
+                    }`}
+                  >
+                    {msg.role === "assistant" && msg.urgency_tier && idx > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+                            msg.urgency_tier === "RED"
+                              ? "bg-rose-600 text-white"
+                              : msg.urgency_tier === "YELLOW"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {msg.urgency_tier} Priority
+                        </span>
+                        {msg.recommended_department && (
+                          <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+                            Dept: {msg.recommended_department}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div>{msg.content}</div>
+
+                    {msg.role === "assistant" && msg.recommended_department && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-200/70 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matched = (clinic?.departments || []).find(
+                              (d) =>
+                                d.name.toLowerCase().includes(msg.recommended_department.toLowerCase()) ||
+                                msg.recommended_department.toLowerCase().includes(d.name.toLowerCase())
+                            );
+                            if (matched) setBookDeptId(matched.department_id);
+                            setAiChatOpen(false);
+                            setDashboardTab("book");
+                          }}
+                          className="rounded-lg bg-[#0F9D6E] px-3 py-1.5 text-[11px] font-bold text-white hover:bg-[#0c825b] transition"
+                        >
+                          Book Token in {msg.recommended_department} →
+                        </button>
+                      </div>
+                    )}
+
+                    {msg.disclaimer && (
+                      <div className="mt-2 text-[10px] text-slate-400">
+                        {msg.disclaimer}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {aiChatLoading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-white border border-slate-200 px-4 py-2.5 text-xs text-slate-500">
+                    MediFlow AI is analyzing your question...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat Input */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendAiMessage();
+              }}
+              className="p-4 bg-white border-t border-slate-200 flex items-center gap-2.5"
+            >
+              <input
+                type="text"
+                placeholder="Ask about symptoms, home care, or which department to visit..."
+                value={aiChatInput}
+                onChange={(e) => setAiChatInput(e.target.value)}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0F9D6E]"
+              />
+              <button
+                type="submit"
+                disabled={aiChatLoading || !aiChatInput.trim()}
+                className="rounded-xl bg-[#0F9D6E] px-5 py-2.5 text-xs sm:text-sm font-bold text-white hover:bg-[#0c825b] transition disabled:opacity-50"
+              >
+                Send
+              </button>
+            </form>
           </div>
         </div>
       )}

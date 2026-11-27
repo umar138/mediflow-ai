@@ -68,6 +68,12 @@ export const api = {
       body: payload,
     });
   },
+  askMedicalGuidance(payload) {
+    return request(`/api/v1/public/medical-guidance`, {
+      method: "POST",
+      body: payload,
+    });
+  },
   trackTicket(trackingToken) {
     return request(`/api/v1/public/tickets/${encodeURIComponent(trackingToken)}`);
   },
@@ -174,6 +180,29 @@ export const api = {
       method: "PATCH",
       token,
       body: payload,
+    });
+  },
+  getClinicStaff(clinicId, token) {
+    return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/staff`, { token });
+  },
+  createClinicStaff(clinicId, payload, token) {
+    return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/staff`, {
+      method: "POST",
+      token,
+      body: payload,
+    });
+  },
+  updateClinicStaff(clinicId, userId, payload, token) {
+    return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/staff/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      token,
+      body: payload,
+    });
+  },
+  deleteClinicStaff(clinicId, userId, token) {
+    return request(`/api/v1/staff/clinics/${encodeURIComponent(clinicId)}/staff/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      token,
     });
   },
 };
