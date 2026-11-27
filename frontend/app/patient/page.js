@@ -29,6 +29,13 @@ export default function PatientPortalPage() {
   const [bookDuration, setBookDuration] = useState("");
   const [bookCardType, setBookCardType] = useState("AUTO");
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [deptDoctors, setDeptDoctors] = useState([]);
+  const [bookDoctorId, setBookDoctorId] = useState("");
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const [bookDate, setBookDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [doctorSlots, setDoctorSlots] = useState([]);
+  const [bookSlot, setBookSlot] = useState("");
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [bookTarget, setBookTarget] = useState("self"); // "self" | "other"
   const [otherName, setOtherName] = useState("");
   const [otherCnic, setOtherCnic] = useState("");
@@ -163,6 +170,46 @@ export default function PatientPortalPage() {
     }, 280);
     return () => clearTimeout(timer);
   }, [bookSymptoms, bookTarget, otherAge, profile]);
+
+  const selectedBookDept = useMemo(() => {
+    return (clinic?.departments || []).find(
+      (d) => String(d.department_id) === String(bookDeptId)
+    );
+  }, [clinic, bookDeptId]);
+
+  const isEmergencyBookDept =
+    selectedBookDept?.code?.toUpperCase() === "EMERG" ||
+    selectedBookDept?.name?.toLowerCase().includes("emerg");
+
+  // Load doctors for selected department
+  useEffect(() => {
+    setBookDoctorId("");
+    setBookSlot("");
+    setDoctorSlots([]);
+    if (!clinic?.clinic_id || !bookDeptId || isEmergencyBookDept) {
+      setDeptDoctors([]);
+      return;
+    }
+    api
+      .getPublicDoctors(clinic.clinic_id, bookDeptId)
+      .then((list) => setDeptDoctors(list || []))
+      .catch(() => setDeptDoctors([]));
+  }, [clinic?.clinic_id, bookDeptId, isEmergencyBookDept]);
+
+  // Load available slots for selected doctor + date
+  useEffect(() => {
+    setBookSlot("");
+    if (!clinic?.clinic_id || !bookDoctorId || !bookDate || isEmergencyBookDept) {
+      setDoctorSlots([]);
+      return;
+    }
+    setSlotsLoading(true);
+    api
+      .getDoctorSlots(clinic.clinic_id, bookDoctorId, bookDate)
+      .then((res) => setDoctorSlots(res?.slots || []))
+      .catch(() => setDoctorSlots([]))
+      .finally(() => setSlotsLoading(false));
+  }, [clinic?.clinic_id, bookDoctorId, bookDate, isEmergencyBookDept]);
 
   async function handleInstantEmergency() {
     if (!clinic) return;
@@ -366,13 +413,22 @@ export default function PatientPortalPage() {
       return;
     }
 
+    if (!isEmergencyBookDept && deptDoctors.length > 0 && !bookDoctorId) {
+      setErrorMsg("Please select a doctor from this department.");
+      setBookingLoading(false);
+      return;
+    }
+
     try {
       const payload = {
         display_name: targetName,
         cnic: targetCnic || undefined,
         age_years: targetAge,
         phone_number: targetPhone,
-        department_id: bookDeptId,
+        department_id: Number(bookDeptId),
+        doctor_id: !isEmergencyBookDept && bookDoctorId ? Number(bookDoctorId) : undefined,
+        service_date: !isEmergencyBookDept && bookDate ? bookDate : undefined,
+        appointment_slot: !isEmergencyBookDept && bookSlot ? bookSlot : undefined,
         symptom_text: bookSymptoms.trim(),
         patient_reported_duration: bookDuration.trim() || null,
         card_type: bookCardType !== "AUTO" ? bookCardType : undefined,
@@ -2221,6 +2277,123 @@ export default function PatientPortalPage() {
                             ))}
                           </select>
                         </div>
+
+                        {isEmergencyBookDept ? (
+                          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-900">
+                            🚨 <strong>Emergency Department:</strong> No doctor selection required — your case goes directly to the on-duty Emergency &amp; Trauma team.
+                          </div>
+                        ) : (
+                          <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-800 mb-2">
+                                Select Doctor / ڈاکٹر منتخب کریں *
+                              </label>
+                              {deptDoctors.length === 0 ? (
+                                <p className="text-xs text-slate-500">
+                                  No specific doctors assigned to this department yet. You will be routed to the department queue.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {deptDoctors.map((doc) => {
+                                    const isAbsentToday = !doc.is_present && bookDate === todayStr;
+                                    const selected = String(bookDoctorId) === String(doc.user_id);
+                                    return (
+                                      <button
+                                        key={doc.user_id}
+                                        type="button"
+                                        disabled={isAbsentToday}
+                                        onClick={() => setBookDoctorId(String(doc.user_id))}
+                                        className={`text-left rounded-2xl border p-3 transition ${
+                                          isAbsentToday
+                                            ? "border-slate-200 bg-slate-100 opacity-60 cursor-not-allowed"
+                                            : selected
+                                            ? "border-[#0F9D6E] bg-emerald-50 ring-2 ring-[#0F9D6E]"
+                                            : "border-slate-200 bg-white hover:border-emerald-300"
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="text-xs font-extrabold text-slate-900">
+                                            {doc.full_name}
+                                          </span>
+                                          <span
+                                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                              doc.is_present
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : "bg-rose-100 text-rose-800"
+                                            }`}
+                                          >
+                                            {doc.is_present ? "● Present" : "○ Absent"}
+                                          </span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 mt-1">
+                                          {[doc.specialization, doc.room_number].filter(Boolean).join(" • ") || "Consultant"}
+                                        </div>
+                                        {isAbsentToday && (
+                                          <div className="text-[10px] font-semibold text-rose-700 mt-1">
+                                            Unavailable today — pick another doctor or future date
+                                          </div>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-800 mb-1">
+                                  Appointment Date (Today or Future) *
+                                </label>
+                                <input
+                                  type="date"
+                                  min={todayStr}
+                                  value={bookDate}
+                                  onChange={(e) => setBookDate(e.target.value)}
+                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                Book for today or schedule 3–4+ days ahead. Already booked time slots are automatically disabled.
+                              </div>
+                            </div>
+
+                            {bookDoctorId && (
+                              <div>
+                                <label className="block text-xs font-bold text-slate-800 mb-2">
+                                  Available Time Slots ({bookDate})
+                                </label>
+                                {slotsLoading ? (
+                                  <p className="text-xs text-slate-500">Checking doctor slots...</p>
+                                ) : (
+                                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                    {doctorSlots.map((s) => {
+                                      const isSelected = bookSlot === s.slot;
+                                      return (
+                                        <button
+                                          key={s.slot}
+                                          type="button"
+                                          disabled={!s.available}
+                                          onClick={() => setBookSlot(s.slot)}
+                                          className={`rounded-xl border px-2.5 py-2 text-[11px] font-bold transition ${
+                                            !s.available
+                                              ? "border-rose-200 bg-rose-50/70 text-rose-400 line-through cursor-not-allowed"
+                                              : isSelected
+                                              ? "border-[#0F9D6E] bg-[#0F9D6E] text-white shadow-xs"
+                                              : "border-slate-200 bg-white text-slate-700 hover:border-emerald-400 hover:bg-emerald-50"
+                                          }`}
+                                        >
+                                          {s.slot}
+                                          {!s.available && <span className="block text-[9px] no-underline">Booked</span>}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-1">

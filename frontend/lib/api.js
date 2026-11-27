@@ -83,6 +83,14 @@ export const api = {
   getLiveSummary(clinicId) {
     return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/live-summary`);
   },
+  getPublicDoctors(clinicId, departmentId = null) {
+    const q = departmentId ? `?department_id=${encodeURIComponent(departmentId)}` : "";
+    return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/doctors${q}`);
+  },
+  getDoctorSlots(clinicId, doctorId, serviceDate = null) {
+    const q = serviceDate ? `?service_date=${encodeURIComponent(serviceDate)}` : "";
+    return request(`/api/v1/public/clinics/${encodeURIComponent(clinicId)}/doctors/${encodeURIComponent(doctorId)}/slots${q}`);
+  },
   staffLogin(email, password) {
     return request(`/api/v1/auth/login`, {
       method: "POST",

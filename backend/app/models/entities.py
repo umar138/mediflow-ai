@@ -101,6 +101,7 @@ class StaffUser(Base):
     license_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     room_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_present: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -148,6 +149,7 @@ class QueueTicket(Base):
 
     token_code: Mapped[str] = mapped_column(String(20), nullable=False)
     service_date: Mapped[date] = mapped_column(Date, default=lambda: utcnow().date(), nullable=False)
+    appointment_slot: Mapped[str | None] = mapped_column(String(30), nullable=True)
     status: Mapped[TicketStatus] = mapped_column(SQLEnum(TicketStatus, name="ticket_status"), default=TicketStatus.WAITING, nullable=False)
     urgency: Mapped[UrgencyTier] = mapped_column(SQLEnum(UrgencyTier, name="urgency_tier"), default=UrgencyTier.GREEN, nullable=False)
     priority_score: Mapped[int] = mapped_column(Integer, default=10, nullable=False)

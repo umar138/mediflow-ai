@@ -160,6 +160,28 @@ export default function AdminStaffPage() {
     }
   }
 
+  async function handleToggleAttendance(member) {
+    if (!session) return;
+    setError("");
+    setSuccess("");
+    try {
+      const updated = await api.updateClinicStaff(
+        session.clinic_id,
+        member.user_id,
+        { is_present: !member.is_present },
+        session.access_token
+      );
+      setSuccess(
+        `${updated.full_name} (ID #${updated.user_id}) marked ${
+          updated.is_present ? "PRESENT" : "ABSENT"
+        }.`
+      );
+      await loadAll(session);
+    } catch (err) {
+      setError(err.message || "Failed to update attendance.");
+    }
+  }
+
   async function handleDeleteStaff(member) {
     if (!session) return;
     if (!window.confirm(`Remove ${member.role} "${member.full_name}" (ID #${member.user_id})?`)) return;
@@ -479,6 +501,7 @@ export default function AdminStaffPage() {
                         <th className="py-2.5 pr-3">Name &amp; Details</th>
                         <th className="py-2.5 pr-3">Role</th>
                         <th className="py-2.5 pr-3">Department</th>
+                        <th className="py-2.5 pr-3">Attendance</th>
                         <th className="py-2.5 pr-3">Login Email</th>
                         <th className="py-2.5 text-right">Actions</th>
                       </tr>
@@ -512,6 +535,19 @@ export default function AdminStaffPage() {
                           </td>
                           <td className="py-3 pr-3 text-slate-700 font-medium">
                             {member.department_name || "All / Unassigned"}
+                          </td>
+                          <td className="py-3 pr-3">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAttendance(member)}
+                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold transition ${
+                                member.is_present
+                                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                                  : "bg-rose-100 text-rose-800 hover:bg-rose-200"
+                              }`}
+                            >
+                              {member.is_present ? "● Present" : "○ Absent"}
+                            </button>
                           </td>
                           <td className="py-3 pr-3 font-mono text-slate-600">{member.email}</td>
                           <td className="py-3 text-right space-x-2 whitespace-nowrap">

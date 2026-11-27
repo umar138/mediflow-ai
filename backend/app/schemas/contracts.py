@@ -29,6 +29,9 @@ class IntakeCreateRequest(BaseModel):
     symptom_text: str = Field(..., min_length=1, max_length=2000)
     input_mode: Literal["TEXT", "VOICE"] = "TEXT"
     department_id: int
+    doctor_id: Optional[int] = None
+    service_date: Optional[str] = None
+    appointment_slot: Optional[str] = Field(default=None, max_length=30)
     patient_reported_duration: Optional[str] = Field(default=None, max_length=100)
     card_type: Optional[str] = None
 
@@ -328,6 +331,7 @@ class AdminStaffItemOut(BaseModel):
     room_number: Optional[str] = None
     phone_number: Optional[str] = None
     is_active: bool = True
+    is_present: bool = True
 
 
 class AdminStaffCreateRequest(BaseModel):
@@ -356,6 +360,31 @@ class AdminStaffUpdateRequest(BaseModel):
     room_number: Optional[str] = Field(default=None, max_length=50)
     phone_number: Optional[str] = Field(default=None, max_length=30)
     is_active: Optional[bool] = None
+    is_present: Optional[bool] = None
+
+
+class PublicDoctorOut(BaseModel):
+    user_id: int
+    full_name: str
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    specialization: Optional[str] = None
+    degrees: Optional[str] = None
+    room_number: Optional[str] = None
+    is_present: bool = True
+
+
+class DoctorSlotOut(BaseModel):
+    slot: str
+    available: bool
+
+
+class DoctorSlotsResponse(BaseModel):
+    doctor_id: int
+    doctor_name: str
+    service_date: str
+    is_present: bool
+    slots: List[DoctorSlotOut]
 
 
 class MedicalGuidanceMessage(BaseModel):

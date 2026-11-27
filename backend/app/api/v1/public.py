@@ -1,19 +1,21 @@
 import secrets
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, date, timezone
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.entities import (
     Clinic, Consultation, Department, Patient, QueueTicket, IntakeRecord, StaffUser,
-    TriageAssessment, TriageRuleHit, PatientTrackingToken, DisplayAccessToken,
-    TicketStatus, UrgencyTier, IntakeChannel, InputMode, PreferredLanguage,
+    ClinicMembership, TriageAssessment, TriageRuleHit, PatientTrackingToken, DisplayAccessToken,
+    UserRole, TicketStatus, UrgencyTier, IntakeChannel, InputMode, PreferredLanguage,
     TriageSource, AuditLog
 )
 from app.schemas.contracts import (
     PublicClinicOut, DepartmentOut, IntakeCreateRequest, IntakeCreateResponse,
     CreatedTicketSummary, PublicTicketTrackOut, PublicDisplayOut,
     EmergencyIntakeRequest, TriagePreviewRequest, TriagePreviewResponse,
-    MedicalGuidanceRequest, MedicalGuidanceResponse
+    MedicalGuidanceRequest, MedicalGuidanceResponse,
+    PublicDoctorOut, DoctorSlotOut, DoctorSlotsResponse
 )
 from app.schemas.triage import TriageInput
 from app.services.triage import run_hybrid_triage, more_severe, _evaluate_deterministic_rules, _infer_department
@@ -86,6 +88,53 @@ async def create_qr_intake(clinic_id: int, req: IntakeCreateRequest, db: Session
         urgency_enum = UrgencyTier(triage_res.urgency_tier)
 
     now = datetime.now(timezone.utc)
+    target_date = now.date()
+    if req.service_date:
+        try:
+            target_date = date.fromisoformat(req.service_date.strip())
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid service_date format (expected YYYY-MM-DD)")
+
+    assigned_doctor: Optional[StaffUser] = None
+    if req.doctor_id is not None:
+        doc_row = (
+            db.query(StaffUser, ClinicMembership)
+            .join(ClinicMembership, StaffUser.user_id == ClinicMembership.user_id)
+            .filter(
+                StaffUser.user_id == req.doctor_id,
+                StaffUser.is_active.is_(True),
+                ClinicMembership.clinic_id == clinic_id,
+                ClinicMembership.role == UserRole.DOCTOR,
+            )
+            .first()
+        )
+        if not doc_row:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Selected doctor not found in this clinic")
+        assigned_doctor, _ = doc_row
+        if target_date == now.date() and not getattr(assigned_doctor, "is_present", True):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{assigned_doctor.full_name} is marked Absent today. Please choose another doctor or pick a future date.",
+            )
+        if req.appointment_slot:
+            slot_clean = req.appointment_slot.strip()
+            slot_taken = (
+                db.query(QueueTicket)
+                .filter(
+                    QueueTicket.clinic_id == clinic_id,
+                    QueueTicket.doctor_id == assigned_doctor.user_id,
+                    QueueTicket.service_date == target_date,
+                    QueueTicket.appointment_slot == slot_clean,
+                    QueueTicket.status.notin_([TicketStatus.CANCELLED, TicketStatus.NO_SHOW]),
+                )
+                .first()
+            )
+            if slot_taken:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Time slot {slot_clean} on {target_date.isoformat()} is already booked for {assigned_doctor.full_name}. Please select another available slot.",
+                )
+
     score, _ = compute_priority_score(urgency_enum, now, now=now)
 
     # Prevent duplicate patient records if CNIC provided
@@ -117,7 +166,11 @@ async def create_qr_intake(clinic_id: int, req: IntakeCreateRequest, db: Session
         clinic_id=clinic_id,
         department_id=dept.department_id,
         patient_id=patient.patient_id,
+        doctor_id=assigned_doctor.user_id if assigned_doctor else None,
+        room_number=assigned_doctor.room_number if assigned_doctor else None,
         token_code=_next_token_code(db, clinic_id, urgency_enum),
+        service_date=target_date,
+        appointment_slot=req.appointment_slot.strip() if req.appointment_slot else None,
         status=TicketStatus.WAITING,
         urgency=urgency_enum,
         priority_score=score,
@@ -704,4 +757,101 @@ def medical_guidance_chat(req: MedicalGuidanceRequest):
         recommended_department=rec_dept,
         quick_actions=quick_actions,
         disclaimer=disclaimer,
+    )
+
+
+DAILY_APPOINTMENT_SLOTS: List[str] = [
+    "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
+    "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM",
+    "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM",
+    "04:00 PM", "04:30 PM",
+]
+
+
+@router.get("/clinics/{clinic_id}/doctors", response_model=List[PublicDoctorOut])
+def list_public_doctors(
+    clinic_id: int,
+    department_id: Optional[int] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(StaffUser, ClinicMembership, Department)
+        .join(ClinicMembership, StaffUser.user_id == ClinicMembership.user_id)
+        .outerjoin(Department, ClinicMembership.department_id == Department.department_id)
+        .filter(
+            ClinicMembership.clinic_id == clinic_id,
+            ClinicMembership.role == UserRole.DOCTOR,
+            StaffUser.is_active.is_(True),
+        )
+    )
+    if department_id is not None:
+        q = q.filter(ClinicMembership.department_id == department_id)
+
+    rows = q.order_by(StaffUser.user_id.asc()).all()
+    return [
+        PublicDoctorOut(
+            user_id=u.user_id,
+            full_name=u.full_name,
+            department_id=m.department_id,
+            department_name=d.name if d else None,
+            specialization=u.specialization,
+            degrees=u.degrees,
+            room_number=u.room_number,
+            is_present=bool(getattr(u, "is_present", True)),
+        )
+        for u, m, d in rows
+    ]
+
+
+@router.get("/clinics/{clinic_id}/doctors/{doctor_id}/slots", response_model=DoctorSlotsResponse)
+def get_doctor_slots(
+    clinic_id: int,
+    doctor_id: int,
+    service_date: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    doc_row = (
+        db.query(StaffUser, ClinicMembership)
+        .join(ClinicMembership, StaffUser.user_id == ClinicMembership.user_id)
+        .filter(
+            StaffUser.user_id == doctor_id,
+            StaffUser.is_active.is_(True),
+            ClinicMembership.clinic_id == clinic_id,
+            ClinicMembership.role == UserRole.DOCTOR,
+        )
+        .first()
+    )
+    if not doc_row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+    doc, _ = doc_row
+
+    target_date = datetime.now(timezone.utc).date()
+    if service_date:
+        try:
+            target_date = date.fromisoformat(service_date.strip())
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid service_date (expected YYYY-MM-DD)")
+
+    booked_rows = (
+        db.query(QueueTicket.appointment_slot)
+        .filter(
+            QueueTicket.clinic_id == clinic_id,
+            QueueTicket.doctor_id == doctor_id,
+            QueueTicket.service_date == target_date,
+            QueueTicket.appointment_slot.isnot(None),
+            QueueTicket.status.notin_([TicketStatus.CANCELLED, TicketStatus.NO_SHOW]),
+        )
+        .all()
+    )
+    booked_set = {row[0] for row in booked_rows if row[0]}
+
+    return DoctorSlotsResponse(
+        doctor_id=doc.user_id,
+        doctor_name=doc.full_name,
+        service_date=target_date.isoformat(),
+        is_present=bool(getattr(doc, "is_present", True)),
+        slots=[
+            DoctorSlotOut(slot=s, available=(s not in booked_set))
+            for s in DAILY_APPOINTMENT_SLOTS
+        ],
     )

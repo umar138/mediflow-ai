@@ -321,9 +321,9 @@ def get_clinic_queue(
     db: Session = Depends(get_db),
 ):
     _assert_same_clinic(ctx, clinic_id)
-    # Doctors only see patients from their assigned department
+    # Doctors & Nurses only see patients from their assigned department
     effective_dept_id = department_id
-    if ctx["role"] == UserRole.DOCTOR and ctx.get("department_id") is not None:
+    if ctx["role"] in {UserRole.DOCTOR, UserRole.NURSE} and ctx.get("department_id") is not None:
         effective_dept_id = ctx["department_id"]
 
     waiting_sorted = get_sorted_waiting_tickets(db, clinic_id, effective_dept_id)
@@ -332,6 +332,8 @@ def get_clinic_queue(
     q = db.query(QueueTicket).filter(QueueTicket.clinic_id == clinic_id)
     if effective_dept_id is not None:
         q = q.filter(QueueTicket.department_id == effective_dept_id)
+    if ctx["role"] == UserRole.DOCTOR:
+        q = q.filter((QueueTicket.doctor_id == ctx["user_id"]) | (QueueTicket.doctor_id.is_(None)))
     all_tickets = q.all()
 
     ahead_map = {t.ticket_id: idx for idx, (t, _, _) in enumerate(waiting_sorted)}
@@ -695,6 +697,7 @@ def _build_staff_item(db: Session, user: StaffUser, membership: ClinicMembership
         room_number=user.room_number,
         phone_number=user.phone_number,
         is_active=user.is_active,
+        is_present=bool(getattr(user, "is_present", True)),
     )
 
 
@@ -815,6 +818,8 @@ def update_clinic_staff(
         user.phone_number = req.phone_number.strip() or None
     if req.is_active is not None:
         user.is_active = req.is_active
+    if req.is_present is not None:
+        user.is_present = req.is_present
     if req.role is not None:
         membership.role = UserRole(req.role)
     if "department_id" in req.model_fields_set:
