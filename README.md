@@ -383,3 +383,57 @@ Before a real deployment:
 ## Project Status
 
 MediFlow AI is a hackathon/demo application. It demonstrates end-to-end clinical queue workflows, real-time updates, and multilingual triage design, but it has not been clinically validated and should not process real patient information outside an authorized, secure prototype environment.
+
+## Upcoming Features
+
+The following items are planned enhancements for future releases. They are roadmap ideas, not guarantees or currently available functionality.
+
+### Clinical Workflow
+
+- Clinically validated triage rules reviewed by qualified medical professionals
+- Role-specific dashboards with configurable permissions and approval workflows
+- Electronic medical record integration
+- Digital prescriptions with download, signing, and pharmacy handoff
+- Lab orders, imaging requests, referrals, and discharge summaries
+- Multi-clinic and multi-hospital administration
+- Configurable departments, shift schedules, rooms, and doctor availability
+
+### Appointments and Patient Experience
+
+- SMS, email, and push appointment reminders
+- Calendar synchronization and recurring appointments
+- Family or caregiver-linked patient accounts
+- Patient consent and document-management workflows
+- Improved accessibility, including screen-reader and mobile-first experiences
+- Additional languages and localization
+- Real-time estimated-wait notifications
+
+### AI and Data
+
+- Multiple LLM providers with configurable failover
+- Retrieval-grounded hospital policy and protocol support
+- Triage explanations with auditable rule and model evidence
+- Human-in-the-loop review for uncertain or conflicting assessments
+- Bias, safety, and clinical accuracy monitoring
+- Redacted synthetic datasets for testing and model evaluation
+
+### Security and Operations
+
+- Restrictable CORS configuration and environment-specific settings
+- Strong secret management and token rotation
+- Refresh-token support and secure session handling
+- Role-based API authorization throughout every endpoint
+- Audit-log search, export, retention, and alerting
+- Database migrations as the standard schema-change workflow
+- Health checks, metrics, centralized logs, and uptime monitoring
+- Automated backups and disaster-recovery procedures
+- Rate limiting, abuse detection, and CAPTCHA where appropriate
+- Automated CI/CD builds, tests, container images, and deployments
+
+### Infrastructure
+
+- Docker and Docker Compose development environments
+- Kubernetes or managed-cloud deployment templates
+- Managed PostgreSQL, Redis, object storage, and message queues
+- Production WebSocket scaling
+- Infrastructure-as-code for repeatable environments
