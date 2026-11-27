@@ -6,8 +6,8 @@ import { api } from "../../lib/api";
 import { connectRealtimeSocket } from "../../lib/ws";
 
 export default function DoctorDashboardPage() {
-  const [email, setEmail] = useState("dr.sara@mediflow.demo");
-  const [password, setPassword] = useState("DemoPass123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [session, setSession] = useState(null);
   const [clinic, setClinic] = useState(null);
   const [selectedDeptId, setSelectedDeptId] = useState("");
@@ -210,6 +210,7 @@ export default function DoctorDashboardPage() {
             <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
             <input
               type="email"
+              autoComplete="off"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
@@ -220,6 +221,7 @@ export default function DoctorDashboardPage() {
             <label className="block text-xs font-semibold text-slate-600 mb-1">Password</label>
             <input
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { api } from "../../lib/api";
 
 export default function AdminStaffPage() {
-  const [email, setEmail] = useState("admin@mediflow.com");
-  const [password, setPassword] = useState("AdminPass123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [session, setSession] = useState(null);
   const [clinic, setClinic] = useState(null);
   const [staffList, setStaffList] = useState([]);
@@ -273,6 +273,7 @@ export default function AdminStaffPage() {
               <input
                 type="email"
                 required
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -284,6 +285,7 @@ export default function AdminStaffPage() {
               <input
                 type="password"
                 required
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"

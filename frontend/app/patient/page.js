@@ -979,7 +979,7 @@ export default function PatientPortalPage() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. 4250153731267 or user@email.com"
+                        autoComplete="off"
                         value={loginIdentifier}
                         onChange={(e) => setLoginIdentifier(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1005,7 +1005,7 @@ export default function PatientPortalPage() {
                       <input
                         type="password"
                         required
-                        placeholder="••••••••"
+                        autoComplete="new-password"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1052,7 +1052,7 @@ export default function PatientPortalPage() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. UMAR"
+                        autoComplete="off"
                         value={regFullName}
                         onChange={(e) => setRegFullName(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1067,7 +1067,7 @@ export default function PatientPortalPage() {
                         <input
                           type="text"
                           required
-                          placeholder="4250153731267"
+                          autoComplete="off"
                           value={regCnic}
                           onChange={(e) => setRegCnic(e.target.value)}
                           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1082,7 +1082,7 @@ export default function PatientPortalPage() {
                           required
                           min={1}
                           max={120}
-                          placeholder="e.g. 22"
+                          autoComplete="off"
                           value={regAge}
                           onChange={(e) => setRegAge(e.target.value)}
                           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1097,7 +1097,7 @@ export default function PatientPortalPage() {
                         </label>
                         <input
                           type="email"
-                          placeholder="xumarkhan66@gmail.com"
+                          autoComplete="off"
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
                           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1109,7 +1109,7 @@ export default function PatientPortalPage() {
                         </label>
                         <input
                           type="tel"
-                          placeholder="03115757291"
+                          autoComplete="off"
                           value={regPhone}
                           onChange={(e) => setRegPhone(e.target.value)}
                           className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1124,7 +1124,7 @@ export default function PatientPortalPage() {
                       <input
                         type="password"
                         required
-                        placeholder="کم از کم 6 ہندسے یا حروف"
+                        autoComplete="new-password"
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1173,7 +1173,7 @@ export default function PatientPortalPage() {
                       <input
                         type="text"
                         required
-                        placeholder="e.g. 4250153731267 or user@email.com"
+                        autoComplete="off"
                         value={forgotIdentifier}
                         onChange={(e) => setForgotIdentifier(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"

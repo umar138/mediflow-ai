@@ -5,8 +5,8 @@ import Link from "next/link";
 import { api } from "../../lib/api";
 
 export default function ReceptionConsolePage() {
-  const [email, setEmail] = useState("reception@mediflow.demo");
-  const [password, setPassword] = useState("DemoPass123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [session, setSession] = useState(null);
   const [clinic, setClinic] = useState(null);
   const [queueData, setQueueData] = useState(null);
