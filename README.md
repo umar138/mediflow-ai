@@ -116,9 +116,13 @@ mediflow-ai/
 
 On startup, the backend automatically ensures the main clinic (`mediflow-demo`), core departments (`CARD`, `EMERG`, `GP`, `PEDS`, `ORTHO`, `GYNAE`), and the Admin account exist:
 
-| Role  | Email              | Password   | Portal URL |
-|-------|--------------------|------------|------------|
-| Admin | `admin@gmail.com`  | `admin123` | `/admin`   |
+| Role   | Email                | Password   | Portal URL |
+|--------|----------------------|------------|------------|
+| Admin  | `admin@gmail.com`    | `admin123` | `/admin`   |
+| Doctor | `cardiologist@gmail.com`   | `cardiologist123`  | `/doctor`  |
+| Reception | `receptionist@gmail.com`  | `receptionist123`  | `/doctor`  |
+| Doctor | `emergency@gmail.com` | `emergency123`  | `/doctor`  |
+
 
 From `/admin`, the Admin can create Doctors, Nurses, and Receptionists, assign their IDs, departments, and rooms, set their emails/passwords, and mark attendance (**Present / Absent**).
 
