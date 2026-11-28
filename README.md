@@ -119,7 +119,7 @@ On startup, the backend automatically ensures the main clinic (`mediflow-demo`),
 | Role   | Email                | Password   | Portal URL |
 |--------|----------------------|------------|------------|
 | Admin  | `admin@gmail.com`    | `admin123` | `/admin`   |
-| Doctor | `cardiologist@gmail.com`   | `cardiologist123`  | `/doctor`  |
+| Doctor | `cardiology@gmail.com`   | `cardiology123`  | `/doctor`  |
 | Reception | `receptionist@gmail.com`  | `receptionist123`  | `/doctor`  |
 | Doctor | `emergency@gmail.com` | `emergency123`  | `/doctor`  |
 
